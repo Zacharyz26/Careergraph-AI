@@ -73,6 +73,25 @@ structured LLM evidence judge is limited to ambiguous pairs, may only select
 candidate evidence already supplied to it, and cannot produce the final score.
 All aggregate scores and risk penalties remain deterministic.
 
+## Career Direction Recommendations
+
+Career direction recommendation follows a proposal-validation-ranking model:
+
+1. CandidateProfile fields are converted into normalized evidence items with
+   stable IDs and source-specific strength.
+2. An optional structured LLM call proposes a diverse set of career directions
+   and cites only those IDs.
+3. The application validates citations, removes unsupported directions,
+   downgrades isolated-skill proposals, and requires substantive evidence for
+   primary recommendations.
+4. Deterministic calibration ranks the validated directions using evidence
+   strength, source diversity, directness, role-family consistency, seniority,
+   and gap severity.
+
+The LLM is a proposal generator, not an authority on fit. Missing credentials or
+provider failures use the deterministic direction catalog. No career direction
+can include evidence absent from the submitted profile.
+
 ## Future Runtime
 
 The initial `docker-compose.yml` provides PostgreSQL with pgvector and Redis.

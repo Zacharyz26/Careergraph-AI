@@ -34,6 +34,13 @@ CONCEPT_ALIASES: dict[str, set[str]] = {
     "deep_learning": {"deep learning", "neural network"},
     "nlp": {"natural language processing", "nlp", "language model"},
     "computer_vision": {"computer vision", "image recognition"},
+    "generative_ai": {
+        "generative ai",
+        "aigc",
+        "diffusion model",
+        "image generation",
+        "generated images",
+    },
     "model_evaluation": {"model evaluation", "model validation", "cross validation"},
     "pytorch": {"pytorch"},
     "tensorflow": {"tensorflow", "keras"},

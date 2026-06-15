@@ -6,18 +6,19 @@ from app.schemas.suggestion import (
     SuggestionActionRequest,
     SuggestionGenerateRequest,
     SuggestionRead,
+    SuggestionResponse,
 )
+from app.services.suggestion_service import SuggestionService
 
 router = APIRouter()
+suggestion_service = SuggestionService()
 
 
-@router.post("/generate", response_model=list[SuggestionRead], status_code=status.HTTP_202_ACCEPTED)
-async def generate_suggestions(payload: SuggestionGenerateRequest) -> list[SuggestionRead]:
-    # TODO: Generate only suggestions grounded in verified source facts.
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail=f"Suggestion generation is not implemented for match {payload.match_id}.",
-    )
+@router.post("/generate", response_model=SuggestionResponse)
+async def generate_suggestions(
+    payload: SuggestionGenerateRequest,
+) -> SuggestionResponse:
+    return await suggestion_service.generate(payload)
 
 
 @router.patch("/{suggestion_id}", response_model=SuggestionRead)

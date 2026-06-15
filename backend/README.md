@@ -198,24 +198,35 @@ Example requirement decision:
 ## Career direction recommendations
 
 `POST /api/v1/career-directions/recommend` ranks up to five evidence-supported
-career directions from a `CandidateProfile`. It is deterministic and uses the
-same cross-domain concepts and evidence strengths as job matching.
+career directions from a `CandidateProfile`.
 
-Ranking considers:
+The recommender uses an evidence-controlled hybrid pipeline:
 
-- skill relevance: 25%
-- experience relevance: 25%
-- project, paper, and patent relevance: 18%
-- education and certification relevance: 12%
-- seniority fit: 8%
-- overall evidence strength: 7%
-- inferred target-role signal: 5%
+1. Build an evidence summary with stable IDs for education, skills, work,
+   projects, papers, patents, certifications, leadership, and languages.
+2. When configured, ask the LLM for 8 to 12 structured candidate directions.
+   Every proposal must cite evidence IDs from that summary.
+3. Remove unknown IDs and directions with no valid evidence.
+4. Downgrade primary directions supported only by isolated skill tokens.
+5. Require strong work, project, paper, or patent evidence for a primary fit.
+6. Suppress generic internship suggestions when specialized directions have
+   meaningful support.
+7. Deterministically rank the validated proposals using evidence strength,
+   evidence diversity, directness, role-family consistency, seniority fit, and
+   gap severity.
 
-Inferred roles are supporting signals only. A catalog entry must still have
-candidate evidence before it can be recommended. Work experience and
-projects/papers/patents carry more weight than standalone skill labels. Sparse
-profiles return fewer recommendations with wider score ranges and lower
-confidence.
+The LLM proposes candidates but does not choose the final Top 5 or assign final
+scores. Inferred target roles are supporting signals only. If `OPENAI_API_KEY`
+is absent or proposal generation fails, the service uses the deterministic
+cross-domain catalog fallback.
+
+```dotenv
+CAREER_DIRECTIONS_ENABLE_LLM=true
+```
+
+Standalone skills are intentionally weak evidence. Work experience and
+projects/papers/patents carry more weight. Sparse profiles return fewer
+recommendations with wider score ranges and lower confidence.
 
 ```bash
 curl -X POST \
@@ -236,6 +247,78 @@ curl -X POST \
 
 Each result includes rank, fit type, score range, confidence, matched evidence,
 direction-specific strengths and gaps, positioning advice, and example titles.
+Each matched evidence object includes the original `evidence_id`, allowing every
+recommendation to be traced back to the submitted CandidateProfile.
+
+## Resume improvement suggestions
+
+`POST /api/v1/suggestions/generate` produces evidence-grounded resume content
+suggestions in three modes:
+
+- `general`: improve clarity and emphasis using only the candidate profile.
+- `career_direction`: position supported evidence for a target direction or a
+  `CareerDirectionRecommendation`.
+- `job_specific`: use a `JobProfile` and `MatchResult` to emphasize matched
+  evidence while keeping missing requirements out of resume-ready text.
+
+The service builds the same stable candidate evidence summary used by career
+direction recommendations. When an API key is configured, structured LLM output
+may propose wording and organization changes. The service then validates every
+source ID, removes unsupported metrics, links, certifications, concepts, and
+job requirements, and raises the risk level for weak evidence. The LLM cannot
+add candidate facts. Missing skills and other unsupported gaps are returned in
+`missing_but_not_addable`.
+
+If `OPENAI_API_KEY` is absent or generation fails, the endpoint returns a
+deterministic fallback that only emphasizes existing evidence verbatim. Every
+suggestion requires user review.
+
+General request:
+
+```bash
+curl -X POST \
+  http://localhost:8000/api/v1/suggestions/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "suggestion_mode": "general",
+    "candidate_profile": {
+      "skills": [{"category": "Backend", "skills": ["Python", "FastAPI"], "evidence": ["Python and FastAPI"]}],
+      "experience": [{"organization": "Example Co", "title": "Software Intern", "bullets": ["Built REST APIs with Python"], "evidence": ["Built REST APIs with Python"]}],
+      "inferred_target_roles": []
+    }
+  }'
+```
+
+For job-specific generation, set `suggestion_mode` to `job_specific` and include
+the complete `job_profile` and `match_result` returned by the existing parsing
+and scoring endpoints. Supplying complete job or career-direction context also
+selects the corresponding mode when `suggestion_mode` is omitted.
+
+Example response:
+
+```json
+{
+  "overall_summary": "Lead with the candidate's supported backend API work.",
+  "suggestions": [
+    {
+      "suggestion_type": "experience_emphasis",
+      "target_section": "work",
+      "original_text": "Built REST APIs with Python",
+      "suggested_text": "Built REST APIs with Python",
+      "reason": "Emphasize direct backend evidence.",
+      "source_evidence_ids": ["E003"],
+      "source_evidence_text": ["Built REST APIs with Python"],
+      "related_requirement_or_direction": "Backend Developer",
+      "risk_level": "low",
+      "requires_user_review": true,
+      "should_add_to_resume": true
+    }
+  ],
+  "missing_but_not_addable": ["Kubernetes"],
+  "suggested_resume_focus": ["Backend Developer"],
+  "warnings": []
+}
+```
 
 ## Tests
 
@@ -249,5 +332,7 @@ pytest -q
 
 Resume upload, PDF/DOCX text extraction, CandidateProfile parsing, JobProfile
 parsing, hybrid match scoring, and career direction recommendations are
-implemented. Database persistence, verified fact persistence, embedding
-persistence/vector search, and suggestion generation remain future work.
+implemented. Evidence-grounded resume improvement suggestions are available
+with structured LLM generation and a deterministic fallback. Database
+persistence, verified fact persistence, and embedding persistence/vector search
+remain future work.

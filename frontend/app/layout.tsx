@@ -5,8 +5,9 @@ import { AppShell } from "@/components/layout/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CareerGraph AI",
-  description: "Evidence-grounded resume intelligence and job matching.",
+  title: "CareerGraph AI | Resume Intelligence",
+  description:
+    "Evidence-grounded career direction, resume suggestions, and job matching.",
 };
 
 export default function RootLayout({

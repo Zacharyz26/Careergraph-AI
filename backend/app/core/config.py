@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     matching_enable_semantic: bool = True
     matching_enable_llm_judge: bool = False
+    career_directions_enable_llm: bool = True
     database_url: str = "postgresql+asyncpg://careergraph:careergraph@localhost:5432/careergraph"
     redis_url: str = "redis://localhost:6379/0"
     allowed_origins: str = "http://localhost:3000"

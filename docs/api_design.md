@@ -65,16 +65,44 @@ Base path: `/api/v1`
 
 The service evaluates a controlled cross-domain direction catalog against
 candidate skills, work evidence, projects, papers, patents, education,
-certifications, and inferred-role signals. Recommendations require direct
-candidate evidence; inferred roles cannot create unsupported directions.
-Responses include score ranges rather than false precision, evidence-based
-strengths and gaps, conservative seniority, positioning advice, and example job
-titles. Sparse profiles may return fewer than five low-confidence directions.
+certifications, leadership, languages, and inferred-role signals.
+
+When an LLM is configured, the service sends a normalized evidence summary with
+stable IDs and requests 8 to 12 structured direction proposals. The service
+then removes unsupported citations, rejects directions without evidence,
+downgrades skill-only primary fits, suppresses generic internship paths when
+specialized evidence is strong, and computes the final ranking
+deterministically. The LLM never assigns final rank or score.
+
+If no API key is available or generation fails, the current deterministic
+cross-domain catalog is used as fallback. Responses include score ranges rather
+than false precision, evidence-based strengths and gaps, conservative
+seniority, positioning advice, and example job titles. Sparse profiles may
+return fewer than five low-confidence directions.
 
 ## Suggestions
 
-- `POST /suggestions/generate`: generate fact-grounded suggestions for a match.
+- `POST /suggestions/generate`: generate evidence-grounded resume improvements
+  in `general`, `career_direction`, or `job_specific` mode.
 - `PATCH /suggestions/{suggestion_id}`: accept, edit, reject, or regenerate.
+
+`candidate_profile` is required. Career-direction mode accepts a target label or
+a complete career direction result. Job-specific mode requires both the parsed
+job profile and match result. Complete context automatically selects the
+corresponding mode when the mode field is omitted.
+
+The service creates stable evidence IDs from candidate skills, work, projects,
+papers, patents, education, certifications, leadership, and languages.
+Structured LLM output may improve wording, organization, and positioning, but
+the service validates every cited evidence item before returning a suggestion.
+Resume-ready suggestions without valid evidence are removed. New metrics, links,
+certifications, unsupported taxonomy concepts, and missing job requirements are
+also removed from suggested resume text.
+
+Unsupported gaps are returned separately in `missing_but_not_addable`. Every
+suggestion includes its source evidence, risk level, related requirement or
+direction, and mandatory user-review flag. Without an API key, the deterministic
+fallback only emphasizes existing evidence verbatim.
 
 ## Conventions
 
