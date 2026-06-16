@@ -1,4 +1,6 @@
 import pytest
+from httpx import Request, Response
+from openai import APITimeoutError, AuthenticationError, RateLimitError
 from pydantic import ValidationError
 
 from app.schemas.candidate import (
@@ -182,3 +184,50 @@ async def test_llm_service_requires_api_key_without_mock() -> None:
             user_prompt="Python developer",
             response_model=CandidateProfile,
         )
+
+
+def test_llm_service_reports_timeout_without_exposing_api_key() -> None:
+    service = LLMService(api_key="sk-secret", timeout_seconds=60)
+    error = APITimeoutError(request=Request("POST", "https://api.openai.com"))
+
+    detail = service._public_provider_error(error)
+
+    assert "timed out after 60 seconds" in detail
+    assert "sk-secret" not in detail
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            AuthenticationError(
+                "invalid key",
+                response=Response(
+                    401,
+                    request=Request("POST", "https://api.openai.com"),
+                ),
+                body=None,
+            ),
+            "Check OPENAI_API_KEY",
+        ),
+        (
+            RateLimitError(
+                "quota exceeded",
+                response=Response(
+                    429,
+                    request=Request("POST", "https://api.openai.com"),
+                ),
+                body=None,
+            ),
+            "usage and billing",
+        ),
+    ],
+)
+def test_llm_service_classifies_provider_errors(
+    error: Exception,
+    expected: str,
+) -> None:
+    detail = LLMService(api_key="sk-secret")._public_provider_error(error)
+
+    assert expected in detail
+    assert "sk-secret" not in detail

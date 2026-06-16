@@ -7,8 +7,6 @@ import { JobMatchPanel } from "@/components/match/JobMatchPanel";
 import { CandidateProfilePanel } from "@/components/resume/CandidateProfilePanel";
 import { ResumeUploader } from "@/components/resume/ResumeUploader";
 import { SuggestionPanel } from "@/components/suggestions/SuggestionPanel";
-import { ErrorMessage } from "@/components/ui/ErrorMessage";
-import { LoadingState } from "@/components/ui/LoadingState";
 import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
 import {
   generateSuggestions,
@@ -27,13 +25,6 @@ import type {
   SuggestionResponse,
 } from "@/lib/types";
 
-type MainAction =
-  | "upload"
-  | "profile"
-  | "directions"
-  | "suggestions"
-  | null;
-
 export function CareerGraphWorkflow() {
   const [upload, setUpload] = useState<ResumeUploadResponse | null>(null);
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
@@ -42,10 +33,15 @@ export function CareerGraphWorkflow() {
   const [suggestions, setSuggestions] = useState<SuggestionResponse | null>(null);
   const [jobProfile, setJobProfile] = useState<JobProfile | null>(null);
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
-  const [mainAction, setMainAction] = useState<MainAction>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [directionsLoading, setDirectionsLoading] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [jobLoading, setJobLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [directionsError, setDirectionsError] = useState<string | null>(null);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
 
   const currentStep = useMemo(() => {
@@ -57,7 +53,7 @@ export function CareerGraphWorkflow() {
   }, [directions.length, matchResult, profile, suggestions]);
 
   async function handleUpload(file: File) {
-    setMainAction("upload");
+    setUploadLoading(true);
     setUploadError(null);
     setUpload(null);
     setProfile(null);
@@ -66,47 +62,53 @@ export function CareerGraphWorkflow() {
     setSuggestions(null);
     setJobProfile(null);
     setMatchResult(null);
+    setProfileError(null);
+    setDirectionsError(null);
+    setSuggestionsError(null);
+    setJobError(null);
     try {
       setUpload(await uploadResume(file));
     } catch (cause) {
       setUploadError(messageFrom(cause));
     } finally {
-      setMainAction(null);
+      setUploadLoading(false);
     }
   }
 
   async function handleParseProfile() {
     if (!upload) return;
-    setMainAction("profile");
-    setError(null);
+    setProfileLoading(true);
+    setProfileError(null);
     try {
       setProfile(await parseCandidateProfile(upload.extracted_text));
     } catch (cause) {
-      setError(messageFrom(cause));
+      setProfileError(messageFrom(cause));
     } finally {
-      setMainAction(null);
+      setProfileLoading(false);
     }
   }
 
   async function handleDirections() {
     if (!profile) return;
-    setMainAction("directions");
-    setError(null);
+    setDirectionsLoading(true);
+    setDirectionsError(null);
     try {
       const result = await recommendCareerDirections(profile);
       setDirections(result.directions);
       setSelectedDirection(result.directions[0] ?? null);
+      setSuggestions(null);
+      setSuggestionsError(null);
     } catch (cause) {
-      setError(messageFrom(cause));
+      setDirectionsError(messageFrom(cause));
     } finally {
-      setMainAction(null);
+      setDirectionsLoading(false);
     }
   }
 
   async function handleSuggestions() {
     if (!profile || !selectedDirection) return;
-    setMainAction("suggestions");
-    setError(null);
+    setSuggestionsLoading(true);
+    setSuggestionsError(null);
     try {
       setSuggestions(
         await generateSuggestions({
@@ -117,9 +119,9 @@ export function CareerGraphWorkflow() {
         }),
       );
     } catch (cause) {
-      setError(messageFrom(cause));
+      setSuggestionsError(messageFrom(cause));
     } finally {
-      setMainAction(null);
+      setSuggestionsLoading(false);
     }
   }
 
@@ -127,8 +129,6 @@ export function CareerGraphWorkflow() {
     if (!profile) return;
     setJobLoading(true);
     setJobError(null);
-    setJobProfile(null);
-    setMatchResult(null);
     try {
       const parsedJob = await parseJobDescription(description);
       setJobProfile(parsedJob);
@@ -164,13 +164,11 @@ export function CareerGraphWorkflow() {
 
       <WorkflowStepper currentStep={currentStep} />
 
-      {error ? <ErrorMessage message={error} onDismiss={() => setError(null)} /> : null}
-
       <div className="workflow-grid">
         <div className="workflow-controls">
           <ResumeUploader
             error={uploadError}
-            isLoading={mainAction === "upload"}
+            isLoading={uploadLoading}
             onUpload={handleUpload}
             upload={upload}
           />
@@ -184,11 +182,11 @@ export function CareerGraphWorkflow() {
               </div>
               <button
                 className="button button--primary button--wide"
-                disabled={mainAction !== null}
+                disabled={profileLoading}
                 onClick={handleParseProfile}
                 type="button"
               >
-                {mainAction === "profile" ? "Parsing profile…" : profile ? "Rebuild profile" : "Parse candidate profile"}
+                {profileLoading ? "Parsing profile…" : profile ? "Rebuild profile" : "Parse candidate profile"}
               </button>
               <details className="disclosure">
                 <summary>View extracted resume text</summary>
@@ -206,11 +204,11 @@ export function CareerGraphWorkflow() {
               </div>
               <button
                 className="button button--primary button--wide"
-                disabled={mainAction !== null}
+                disabled={directionsLoading}
                 onClick={handleDirections}
                 type="button"
               >
-                {mainAction === "directions" ? "Ranking directions…" : directions.length ? "Refresh directions" : "Recommend career directions"}
+                {directionsLoading ? "Ranking directions…" : directions.length ? "Refresh directions" : "Recommend career directions"}
               </button>
             </section>
           ) : null}
@@ -224,21 +222,23 @@ export function CareerGraphWorkflow() {
               </div>
               <button
                 className="button button--dark button--wide"
-                disabled={mainAction !== null}
+                disabled={suggestionsLoading}
                 onClick={handleSuggestions}
                 type="button"
               >
-                {mainAction === "suggestions" ? "Generating suggestions…" : "Generate improvement suggestions"}
+                {suggestionsLoading ? "Generating suggestions…" : suggestions ? "Refresh improvement suggestions" : "Generate improvement suggestions"}
               </button>
             </section>
           ) : null}
         </div>
 
         <aside className="workflow-results">
-          {mainAction && mainAction !== "upload" ? (
-            <LoadingState label={loadingLabel(mainAction)} />
-          ) : profile ? (
-            <CandidateProfilePanel profile={profile} />
+          {profile || profileLoading || profileError ? (
+            <CandidateProfilePanel
+              error={profileError}
+              isLoading={profileLoading}
+              profile={profile}
+            />
           ) : (
             <section className="card empty-state">
               <span className="empty-illustration" aria-hidden="true">
@@ -256,18 +256,27 @@ export function CareerGraphWorkflow() {
         </aside>
       </div>
 
-      {directions.length ? (
+      {directions.length || directionsLoading || directionsError ? (
         <CareerDirectionCards
           directions={directions}
+          error={directionsError}
+          isLoading={directionsLoading}
           onSelect={(direction) => {
             setSelectedDirection(direction);
             setSuggestions(null);
+            setSuggestionsError(null);
           }}
           selected={selectedDirection}
         />
       ) : null}
 
-      {suggestions ? <SuggestionPanel result={suggestions} /> : null}
+      {suggestions || suggestionsLoading || suggestionsError ? (
+        <SuggestionPanel
+          error={suggestionsError}
+          isLoading={suggestionsLoading}
+          result={suggestions}
+        />
+      ) : null}
 
       <JobMatchPanel
         disabled={!profile}
@@ -283,14 +292,4 @@ export function CareerGraphWorkflow() {
 
 function messageFrom(cause: unknown): string {
   return cause instanceof Error ? cause.message : "An unexpected error occurred.";
-}
-
-function loadingLabel(action: Exclude<MainAction, null>): string {
-  const labels = {
-    upload: "Extracting resume text…",
-    profile: "Structuring your candidate evidence…",
-    directions: "Ranking evidence-supported career directions…",
-    suggestions: "Generating and validating resume improvements…",
-  };
-  return labels[action];
 }

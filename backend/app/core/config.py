@@ -1,12 +1,15 @@
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -20,12 +23,22 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_base_url: str | None = None
+    openai_timeout_seconds: float = Field(default=60, gt=0)
+    openai_max_retries: int = Field(default=1, ge=0, le=5)
     matching_enable_semantic: bool = True
     matching_enable_llm_judge: bool = False
     career_directions_enable_llm: bool = True
     database_url: str = "postgresql+asyncpg://careergraph:careergraph@localhost:5432/careergraph"
     redis_url: str = "redis://localhost:6379/0"
     allowed_origins: str = "http://localhost:3000"
+
+    @field_validator("openai_base_url", mode="before")
+    @classmethod
+    def normalize_openai_base_url(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

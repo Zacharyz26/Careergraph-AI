@@ -1,15 +1,21 @@
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { LoadingState } from "@/components/ui/LoadingState";
 import type { CareerDirection } from "@/lib/types";
 
 type CareerDirectionCardsProps = {
   directions: CareerDirection[];
   selected: CareerDirection | null;
   onSelect: (direction: CareerDirection) => void;
+  isLoading?: boolean;
+  error?: string | null;
 };
 
 export function CareerDirectionCards({
   directions,
   selected,
   onSelect,
+  isLoading = false,
+  error = null,
 }: CareerDirectionCardsProps) {
   return (
     <section className="card">
@@ -20,6 +26,14 @@ export function CareerDirectionCards({
           <p>Ranked from the evidence already present in your resume.</p>
         </div>
       </div>
+      {error ? <ErrorMessage message={error} /> : null}
+      {isLoading ? (
+        <LoadingState
+          compact={directions.length > 0}
+          detail="This may take up to 60 seconds."
+          label="Recommending career directions..."
+        />
+      ) : null}
       <div className="direction-list">
         {directions.map((direction) => {
           const isSelected = selected?.direction === direction.direction;

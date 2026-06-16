@@ -63,7 +63,13 @@ export function JobMatchPanel({
         <p className="inline-note">Complete candidate profile parsing before scoring a job.</p>
       ) : null}
       {error ? <ErrorMessage message={error} /> : null}
-      {isLoading ? <LoadingState label="Parsing requirements and calculating evidence coverage…" /> : null}
+      {isLoading ? (
+        <LoadingState
+          compact={matchResult !== null}
+          detail="This may take up to 60 seconds. Any previous match remains visible below."
+          label="Parsing the job and calculating evidence coverage..."
+        />
+      ) : null}
 
       {matchResult ? (
         <div className="match-result">

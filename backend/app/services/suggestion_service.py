@@ -25,7 +25,15 @@ Safety rules:
   meaning.
 - Missing requirements and direction gaps must go in missing_but_not_addable;
   never insert them into suggested resume text.
+- Review the complete structured profile before identifying a gap. Do not
+  suggest adding information that already exists in another section.
 - Improve wording, structure, clarity, emphasis, grouping, and positioning only.
+- Prioritize substantive improvements to work, projects, patents, skills,
+  section emphasis, and target-direction alignment.
+- Do not return no-op rewrites, cosmetic formatting advice, placeholder text, or
+  generic suggestions that merely repeat the source evidence.
+- If a useful rewrite requires a missing metric or fact, keep the safe existing
+  wording and put the missing information in missing_but_not_addable.
 - If evidence is weak or ambiguous, use medium or high risk.
 - Distinguish changes that can be made now from gaps requiring future learning
   or project work.
@@ -36,6 +44,45 @@ Safety rules:
 
 URL_PATTERN = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 NUMBER_PATTERN = re.compile(r"\b\d+(?:[.,]\d+)?%?\b")
+PLACEHOLDER_PATTERN = re.compile(
+    r"\[(?:insert|add|metric|number|details?)[^\]]*\]"
+    r"|<(?:insert|add|metric|number|details?)[^>]*>"
+    r"|\b(?:tbd|xx+|x%)\b",
+    re.IGNORECASE,
+)
+COSMETIC_TERMS = {
+    "font",
+    "font size",
+    "formatting",
+    "margin",
+    "spacing",
+    "template",
+    "typography",
+    "color scheme",
+    "visual layout",
+}
+LOW_INFORMATION_TOKENS = {
+    "add",
+    "clarify",
+    "clear",
+    "evidence",
+    "include",
+    "missing",
+    "needs",
+    "resume",
+    "section",
+    "unclear",
+}
+SUGGESTION_PRIORITY = {
+    "bullet_rewrite": 0,
+    "experience_emphasis": 1,
+    "project_emphasis": 2,
+    "evidence_strengthening": 3,
+    "skill_grouping": 4,
+    "section_reorder": 5,
+    "headline_summary": 6,
+    "gap_disclosure": 7,
+}
 
 
 class SuggestionService:
@@ -84,6 +131,7 @@ class SuggestionService:
         summary: CandidateEvidenceSummary,
     ) -> str:
         context = {
+            "candidate_profile": request.candidate_profile.model_dump(),
             "suggestion_mode": request.suggestion_mode,
             "target_direction": request.target_direction,
             "career_direction_result": (
@@ -121,6 +169,7 @@ class SuggestionService:
         unsupported = self._unsupported_gaps(request)
         safe_suggestions = []
         warnings = list(generated.warnings)
+        seen_suggestions: set[tuple[str, str, tuple[str, ...]]] = set()
 
         for suggestion in generated.suggestions:
             evidence = self._resolve_evidence(
@@ -145,30 +194,44 @@ class SuggestionService:
                     "Removed an unsafe suggestion: " + "; ".join(unsafe_reasons)
                 )
                 continue
+            low_value_reason = self._low_value_reason(suggestion, evidence)
+            if low_value_reason:
+                warnings.append(
+                    "Removed a low-value suggestion: " + low_value_reason
+                )
+                continue
 
             risk = suggestion.risk_level
             if evidence and max(item.evidence_strength for item in evidence) < 0.75:
                 risk = "medium" if risk == "low" else risk
 
-            safe_suggestions.append(
-                suggestion.model_copy(
-                    update={
-                        "source_evidence_ids": [
-                            item.evidence_id for item in evidence
-                        ],
-                        "source_evidence_text": [item.text for item in evidence],
-                        "risk_level": risk,
-                        "should_add_to_resume": suggestion.should_add_to_resume,
-                        "requires_user_review": True,
-                        "original_text": (
-                            evidence[0].text
-                            if suggestion.suggestion_type == "bullet_rewrite"
-                            and evidence
-                            else suggestion.original_text
-                        ),
-                    }
-                )
+            validated = suggestion.model_copy(
+                update={
+                    "source_evidence_ids": [
+                        item.evidence_id for item in evidence
+                    ],
+                    "source_evidence_text": [item.text for item in evidence],
+                    "risk_level": risk,
+                    "should_add_to_resume": suggestion.should_add_to_resume,
+                    "requires_user_review": True,
+                    "original_text": (
+                        evidence[0].text
+                        if suggestion.suggestion_type == "bullet_rewrite"
+                        and evidence
+                        else suggestion.original_text
+                    ),
+                }
             )
+            key = (
+                validated.suggestion_type,
+                self._normalize(validated.suggested_text),
+                tuple(validated.source_evidence_ids),
+            )
+            if key in seen_suggestions:
+                warnings.append("Removed a duplicate suggestion.")
+                continue
+            seen_suggestions.add(key)
+            safe_suggestions.append(validated)
 
         generated_missing = self._known_generated_gaps(
             generated.missing_but_not_addable,
@@ -177,7 +240,10 @@ class SuggestionService:
         missing = self._deduplicate([*unsupported, *generated_missing])
         return SuggestionResponse(
             overall_summary=generated.overall_summary,
-            suggestions=safe_suggestions,
+            suggestions=sorted(
+                safe_suggestions,
+                key=lambda item: SUGGESTION_PRIORITY[item.suggestion_type],
+            )[:6],
             missing_but_not_addable=missing,
             suggested_resume_focus=generated.suggested_resume_focus,
             warnings=self._deduplicate(warnings),
@@ -225,6 +291,9 @@ class SuggestionService:
             if url.casefold() not in source_text:
                 reasons.append("introduces an unsupported link")
 
+        if PLACEHOLDER_PATTERN.search(suggestion.suggested_text):
+            reasons.append("contains placeholder text")
+
         certification_markers = {"certified", "certification", "credential"}
         if (
             certification_markers & set(suggested.split())
@@ -243,6 +312,25 @@ class SuggestionService:
                 + ", ".join(sorted(unsupported_concepts))
             )
         return reasons
+
+    def _low_value_reason(
+        self,
+        suggestion: SuggestionItem,
+        evidence: list[CareerEvidenceItem],
+    ) -> str | None:
+        suggested = self._normalize(suggestion.suggested_text)
+        original = self._normalize(suggestion.original_text or "")
+        evidence_texts = {self._normalize(item.text) for item in evidence}
+        if any(term in suggested for term in COSMETIC_TERMS):
+            return "contains cosmetic formatting advice"
+        if suggested and (
+            suggested == original
+            or suggested in evidence_texts
+        ):
+            return "does not materially change or reposition the source evidence"
+        if suggestion.should_add_to_resume and len(suggested.split()) < 3:
+            return "is too short to provide a meaningful resume improvement"
+        return None
 
     def _unsupported_gaps(
         self,
@@ -269,7 +357,11 @@ class SuggestionService:
         if request.career_direction_result:
             gaps.extend(request.career_direction_result.gaps_for_this_direction)
         gaps.extend(request.candidate_profile.improvement_areas)
-        return self._deduplicate(gaps)
+        return [
+            gap
+            for gap in self._deduplicate(gaps)
+            if not self._gap_is_already_supported(gap, request)
+        ]
 
     def _deterministic_fallback(
         self,
@@ -283,22 +375,19 @@ class SuggestionService:
         )
         suggestions = []
         for item in evidence[:3]:
-            suggestion_type = (
-                "experience_emphasis"
-                if item.source_type in {"work", "leadership"}
-                else "project_emphasis"
-                if item.source_type in {"project", "paper", "patent"}
-                else "skill_grouping"
-            )
+            section = item.source_type
             suggestions.append(
                 SuggestionItem(
-                    suggestion_type=suggestion_type,
-                    target_section=item.source_type,
+                    suggestion_type="section_reorder",
+                    target_section=section,
                     original_text=item.text,
-                    suggested_text=item.text,
+                    suggested_text=(
+                        f"Prioritize the {section} section and place this supported "
+                        f"evidence near the top: {item.text}"
+                    ),
                     reason=(
-                        "Emphasize this existing evidence for clearer resume "
-                        "positioning without changing its factual meaning."
+                        "This is among the strongest available evidence for the "
+                        "selected direction and can be emphasized without adding claims."
                     ),
                     source_evidence_ids=[item.evidence_id],
                     source_evidence_text=[item.text],
@@ -307,7 +396,7 @@ class SuggestionService:
                         "low" if item.evidence_strength >= 0.85 else "medium"
                     ),
                     requires_user_review=True,
-                    should_add_to_resume=True,
+                    should_add_to_resume=False,
                 )
             )
         return SuggestionResponse(
@@ -336,12 +425,65 @@ class SuggestionService:
         return None
 
     def _candidate_text(self, request: SuggestionGenerateRequest) -> str:
-        summary = self.evidence_service.build_evidence_summary(
-            request.candidate_profile
-        )
         return " ".join(
-            self._normalize(item.text) for item in summary.all_evidence()
+            self._normalize(value)
+            for value in self._flatten_values(
+                request.candidate_profile.model_dump()
+            )
         )
+
+    def _gap_is_already_supported(
+        self,
+        gap: str,
+        request: SuggestionGenerateRequest,
+    ) -> bool:
+        normalized_gap = self._normalize(gap)
+        candidate_text = self._candidate_text(request)
+        content_tokens = {
+            token
+            for token in normalized_gap.split()
+            if token not in LOW_INFORMATION_TOKENS and len(token) > 2
+        }
+        if content_tokens:
+            candidate_tokens = set(candidate_text.split())
+            coverage = len(content_tokens & candidate_tokens) / len(content_tokens)
+            if coverage >= 0.8:
+                return True
+        gap_concepts = extract_concepts(normalized_gap)
+        candidate_concepts = extract_concepts(candidate_text)
+        if (
+            len(content_tokens) >= 2
+            and gap_concepts
+            and gap_concepts <= candidate_concepts
+        ):
+            return True
+        if {"link", "links", "url", "github", "portfolio"} & content_tokens:
+            profile = request.candidate_profile
+            return bool(
+                profile.basic_info.linkedin_url
+                or profile.basic_info.github_url
+                or profile.basic_info.portfolio_url
+                or any(project.url for project in profile.projects)
+                or any(paper.url for paper in profile.papers)
+            )
+        return False
+
+    def _flatten_values(self, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [
+                text
+                for nested in value.values()
+                for text in self._flatten_values(nested)
+            ]
+        if isinstance(value, list):
+            return [
+                text
+                for nested in value
+                for text in self._flatten_values(nested)
+            ]
+        return []
 
     def _known_generated_gaps(
         self,

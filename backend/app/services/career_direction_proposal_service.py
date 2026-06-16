@@ -13,6 +13,11 @@ Rules:
   metrics, or links.
 - Do not recommend fashionable roles without direct supporting evidence.
 - An isolated skill token is not enough for a primary direction.
+- Evaluate the complete evidence pattern. A single activity or transferable
+  experience must not rival a direction supported coherently by education,
+  skills, projects, work, papers, patents, or certifications.
+- Cite evidence from multiple source types when the profile supports it. Do not
+  cherry-pick one item while ignoring a stronger, coherent evidence pattern.
 - Prefer specific directions when work, project, paper, patent, or substantial
   education evidence supports them.
 - Label adjacent paths as transferable or exploratory rather than overstating fit.

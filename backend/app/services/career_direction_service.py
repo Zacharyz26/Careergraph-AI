@@ -87,6 +87,7 @@ class ScoredDirection:
     education_score: float
     seniority_score: float
     evidence_score: float
+    coherence_score: float
     evidence: tuple[tuple[CandidateEvidenceItem, frozenset[str]], ...]
     missing_signals: tuple[str, ...]
 
@@ -237,7 +238,7 @@ class CareerDirectionService:
             if not evidence:
                 continue
             validated.append(
-                self._score_proposal(candidate, proposal, evidence)
+                self._score_proposal(candidate, summary, proposal, evidence)
             )
 
         specialized_strength = max(
@@ -272,6 +273,7 @@ class CareerDirectionService:
     def _score_proposal(
         self,
         candidate: CandidateProfile,
+        summary: CandidateEvidenceSummary,
         proposal: ProposedCareerDirection,
         evidence: list[CareerEvidenceItem],
     ) -> dict[str, object]:
@@ -319,6 +321,18 @@ class CareerDirectionService:
             (role.confidence for role in family_roles),
             default=0.45 if strong_evidence else 0.2,
         )
+        family_support = self._family_profile_support(summary)
+        strongest_family_support = max(family_support.values(), default=0)
+        proposal_family_support = family_support.get(proposal.role_family, 0)
+        coherence = (
+            proposal_family_support / strongest_family_support
+            if strongest_family_support
+            else 0
+        )
+        evidence_concentration = min(
+            1,
+            sum(item.evidence_strength for item in evidence) / 2.5,
+        )
         seniority_fit = self._seniority_consistency(
             candidate,
             proposal.likely_seniority_level,
@@ -326,22 +340,40 @@ class CareerDirectionService:
         )
         gap_severity = min(1, len(proposal.possible_gaps) / 4)
         score = (
-            evidence_strength * 32
-            + diversity * 18
-            + directness * 20
-            + family_consistency * 12
-            + seniority_fit * 10
-            + (1 - gap_severity) * 8
+            evidence_strength * 20
+            + diversity * 12
+            + directness * 15
+            + family_consistency * 6
+            + seniority_fit * 7
+            + (1 - gap_severity) * 5
+            + coherence * 25
+            + evidence_concentration * 10
         )
         if skill_only:
             score = min(score, 38)
+        isolated_support = len(evidence) == 1 or len(sources) == 1
+        if isolated_support and coherence < 0.6:
+            score = min(score, 48)
+            fit_type = (
+                "transferable"
+                if proposal_family_support > 0
+                else "exploratory"
+            )
+        elif fit_type == "primary" and (
+            coherence < 0.7
+            or (diversity < 0.5 and not strong_evidence)
+        ):
+            fit_type = "secondary"
         confidence = min(
             1,
-            evidence_strength * 0.45
-            + diversity * 0.2
-            + directness * 0.2
-            + family_consistency * 0.15,
+            evidence_strength * 0.3
+            + diversity * 0.15
+            + directness * 0.15
+            + family_consistency * 0.1
+            + coherence * 0.3,
         )
+        if skill_only:
+            confidence = min(confidence, 0.4)
         return {
             "proposal": proposal,
             "evidence": evidence,
@@ -350,6 +382,7 @@ class CareerDirectionService:
             "confidence": confidence,
             "evidence_diversity": diversity,
             "directness": directness,
+            "coherence": coherence,
             "strong_evidence": strong_evidence,
         }
 
@@ -418,7 +451,14 @@ class CareerDirectionService:
         scored = [
             result
             for definition in DIRECTION_CATALOG
-            if (result := self._score_catalog_direction(candidate, evidence_index, definition))
+            if (
+                result := self._score_catalog_direction(
+                    candidate,
+                    summary,
+                    evidence_index,
+                    definition,
+                )
+            )
             and result.score >= 18
         ]
         scored.sort(
@@ -442,6 +482,7 @@ class CareerDirectionService:
     def _score_catalog_direction(
         self,
         candidate: CandidateProfile,
+        summary: CandidateEvidenceSummary,
         evidence_index: list[CandidateEvidenceItem],
         definition: DirectionDefinition,
     ) -> ScoredDirection | None:
@@ -468,17 +509,30 @@ class CareerDirectionService:
         artifact_score = self._source_score(matched, {"projects", "papers", "patents"})
         education_score = self._source_score(matched, {"education", "certifications"})
         evidence_score = self._evidence_score(matched)
+        family_support = self._family_profile_support(summary)
+        strongest_family_support = max(family_support.values(), default=0)
+        coherence_score = (
+            family_support.get(definition.role_family, 0)
+            / strongest_family_support
+            * 100
+            if strongest_family_support
+            else 0
+        )
         seniority_score = self._fallback_seniority_score(candidate, inferred)
         inferred_score = max((role.confidence for role in inferred), default=0) * 100
         score = (
-            skill_score * 0.25
-            + experience_score * 0.25
-            + artifact_score * 0.18
-            + education_score * 0.12
-            + seniority_score * 0.08
-            + evidence_score * 0.07
+            skill_score * 0.2
+            + experience_score * 0.2
+            + artifact_score * 0.16
+            + education_score * 0.1
+            + seniority_score * 0.06
+            + evidence_score * 0.08
             + inferred_score * 0.05
+            + coherence_score * 0.15
         )
+        source_count = len({item.source_type for item, _ in matched})
+        if source_count == 1 and coherence_score < 60:
+            score = min(score, 48)
         supported = set().union(*(signals for _, signals in matched)) if matched else set()
         return ScoredDirection(
             definition=definition,
@@ -489,6 +543,7 @@ class CareerDirectionService:
             education_score=education_score,
             seniority_score=seniority_score,
             evidence_score=evidence_score,
+            coherence_score=coherence_score,
             evidence=tuple(sorted(matched, key=lambda pair: pair[0].evidence_strength, reverse=True)[:6]),
             missing_signals=tuple(sorted((definition.concepts | definition.keywords) - supported)[:3]),
         )
@@ -584,7 +639,10 @@ class CareerDirectionService:
     ) -> str:
         if rank == 1 and item.score >= 55:
             return "primary"
-        if item.experience_score >= 45 or item.artifact_score >= 45:
+        if (
+            item.coherence_score >= 65
+            and (item.experience_score >= 45 or item.artifact_score >= 45)
+        ):
             return "secondary"
         top_family = selected[0].definition.role_family if selected else None
         if item.definition.role_family != top_family and item.score >= 28:
@@ -657,6 +715,47 @@ class CareerDirectionService:
             self._normalize(" ".join(item.text for item in evidence)).split()
         )
         return min(1, len(proposal_tokens & evidence_tokens) / 3)
+
+    def _family_profile_support(
+        self,
+        summary: CandidateEvidenceSummary,
+    ) -> dict[RoleFamily, float]:
+        family_definitions: dict[RoleFamily, list[DirectionDefinition]] = {}
+        for definition in DIRECTION_CATALOG:
+            family_definitions.setdefault(definition.role_family, []).append(
+                definition
+            )
+
+        support: dict[RoleFamily, float] = {}
+        for family, definitions in family_definitions.items():
+            concepts = set().union(
+                *(set(definition.concepts) for definition in definitions)
+            )
+            keywords = set().union(
+                *(set(definition.keywords) for definition in definitions)
+            )
+            matched = [
+                item
+                for item in summary.all_evidence()
+                if concepts & set(item.normalized_concepts)
+                or any(self._phrase_present(keyword, item.text) for keyword in keywords)
+            ]
+            if not matched:
+                support[family] = 0
+                continue
+            sources = {item.source_type for item in matched}
+            strong_sources = {
+                item.source_type
+                for item in matched
+                if item.source_type in self.STRONG_SOURCES
+            }
+            strength = sum(item.evidence_strength for item in matched)
+            support[family] = (
+                strength
+                + min(2.5, len(sources) * 0.55)
+                + min(2, len(strong_sources) * 0.7)
+            )
+        return support
 
     def _deduplicate_evidence(
         self,

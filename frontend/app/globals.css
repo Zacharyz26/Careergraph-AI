@@ -580,11 +580,10 @@ p {
 }
 
 .loading-state {
-  display: flex;
+  display: grid;
   min-height: 220px;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  align-content: center;
+  gap: 18px;
   padding: 30px;
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -595,7 +594,50 @@ p {
 
 .loading-state--compact {
   min-height: auto;
-  padding: 18px;
+  margin-bottom: 20px;
+  padding: 16px 18px;
+}
+
+.loading-state__message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.loading-state__message > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.loading-state__message strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.loading-state__message small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.loading-progress {
+  position: relative;
+  display: block;
+  width: min(100%, 420px);
+  height: 4px;
+  overflow: hidden;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: #e8e9f6;
+}
+
+.loading-progress span {
+  position: absolute;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand), #8b6ce8);
+  animation: loading-progress 1.35s ease-in-out infinite;
 }
 
 .spinner {
@@ -609,6 +651,18 @@ p {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@keyframes loading-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .loading-progress span {
+    animation: none;
+  }
 }
 
 .error-message {
@@ -948,6 +1002,14 @@ p {
   text-transform: uppercase;
 }
 
+.suggestion-use {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
 .risk-badge {
   padding: 3px 6px;
   border-radius: 999px;
@@ -1028,6 +1090,14 @@ p {
   margin-top: 20px;
   padding-top: 18px;
   border-top: 1px solid #e8ecf2;
+}
+
+.unsupported-gaps .empty-copy {
+  margin-bottom: 10px;
+}
+
+.disclosure .clean-list {
+  margin-top: 14px;
 }
 
 .job-match-card {

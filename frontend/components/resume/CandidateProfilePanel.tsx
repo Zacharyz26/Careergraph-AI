@@ -1,10 +1,37 @@
+import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { LoadingState } from "@/components/ui/LoadingState";
 import type { CandidateProfile } from "@/lib/types";
 
 export function CandidateProfilePanel({
   profile,
+  isLoading = false,
+  error = null,
 }: {
-  profile: CandidateProfile;
+  profile: CandidateProfile | null;
+  isLoading?: boolean;
+  error?: string | null;
 }) {
+  if (!profile) {
+    return (
+      <section className="card result-card">
+        <div className="card-heading">
+          <div>
+            <span className="eyebrow">Candidate profile</span>
+            <h2>Building your structured profile</h2>
+            <p>Your extracted resume remains grounded in the source document.</p>
+          </div>
+        </div>
+        {error ? <ErrorMessage message={error} /> : null}
+        {isLoading ? (
+          <LoadingState
+            detail="This may take up to 60 seconds."
+            label="Parsing your resume into a structured profile..."
+          />
+        ) : null}
+      </section>
+    );
+  }
+
   const name = profile.basic_info.full_name || "Candidate profile";
   const headline =
     profile.basic_info.headline ||
@@ -13,6 +40,15 @@ export function CandidateProfilePanel({
 
   return (
     <section className="card result-card">
+      {error ? <ErrorMessage message={error} /> : null}
+      {isLoading ? (
+        <LoadingState
+          compact
+          detail="This may take up to 60 seconds. Your current profile remains available below."
+          label="Parsing your resume into a structured profile..."
+        />
+      ) : null}
+
       <div className="profile-header">
         <div className="avatar" aria-hidden="true">
           {name

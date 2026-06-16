@@ -284,7 +284,7 @@ async def test_career_direction_mode_preserves_direction_context() -> None:
             generated_item(
                 evidence_id=evidence_id,
                 evidence_text=evidence_text,
-                suggested_text=evidence_text,
+                suggested_text="Created a PostgreSQL-backed inventory API.",
                 suggestion_type="project_emphasis",
                 related="Backend Engineering",
             )
@@ -340,7 +340,7 @@ async def test_weak_skill_evidence_increases_risk_level() -> None:
             generated_item(
                 evidence_id=evidence_id,
                 evidence_text=evidence_text,
-                suggested_text="FastAPI",
+                suggested_text="Group FastAPI under API development skills.",
                 suggestion_type="skill_grouping",
                 risk_level="low",
             )
@@ -352,6 +352,85 @@ async def test_weak_skill_evidence_increases_risk_level() -> None:
     )
 
     assert result.suggestions[0].risk_level == "medium"
+
+
+@pytest.mark.asyncio
+async def test_noop_and_cosmetic_suggestions_are_removed() -> None:
+    candidate = candidate_profile()
+    bootstrap = SuggestionService(llm_service=LLMService(api_key=""))
+    evidence_id, evidence_text = evidence_for(
+        bootstrap,
+        candidate,
+        "Built REST APIs with Python",
+    )
+    response = SuggestionResponse(
+        overall_summary="Improve the resume.",
+        suggestions=[
+            generated_item(
+                evidence_id=evidence_id,
+                evidence_text=evidence_text,
+                suggested_text=evidence_text,
+            ),
+            generated_item(
+                evidence_id=evidence_id,
+                evidence_text=evidence_text,
+                suggested_text="Use a larger font and cleaner formatting.",
+                suggestion_type="experience_emphasis",
+            ),
+        ],
+    )
+
+    result = await mocked_service(response).generate(
+        SuggestionGenerateRequest(candidate_profile=candidate)
+    )
+
+    assert result.suggestions == []
+    assert len(
+        [
+            warning
+            for warning in result.warnings
+            if "low-value suggestion" in warning
+        ]
+    ) == 2
+
+
+@pytest.mark.asyncio
+async def test_existing_profile_information_is_not_reported_as_missing() -> None:
+    candidate = candidate_profile().model_copy(deep=True)
+    candidate.projects[0].url = "https://example.com/inventory"
+    candidate.improvement_areas = [
+        "Add a project link.",
+        "Cloud deployment evidence is missing.",
+    ]
+    candidate.skills[0].skills.append("AWS")
+    service = SuggestionService(llm_service=LLMService(api_key=""))
+
+    result = await service.generate(
+        SuggestionGenerateRequest(candidate_profile=candidate)
+    )
+
+    assert "Add a project link." not in result.missing_but_not_addable
+    assert "Cloud deployment evidence is missing." not in (
+        result.missing_but_not_addable
+    )
+
+
+@pytest.mark.asyncio
+async def test_related_tool_does_not_satisfy_exact_missing_skill() -> None:
+    candidate = candidate_profile().model_copy(deep=True)
+    candidate.skills[0].skills.append("Docker")
+    service = SuggestionService(llm_service=LLMService(api_key=""))
+
+    result = await service.generate(
+        SuggestionGenerateRequest(
+            candidate_profile=candidate,
+            job_profile=job_profile(),
+            match_result=match_result(),
+            suggestion_mode="job_specific",
+        )
+    )
+
+    assert "Kubernetes" in result.missing_but_not_addable
 
 
 @pytest.mark.asyncio

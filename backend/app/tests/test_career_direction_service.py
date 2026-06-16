@@ -421,7 +421,11 @@ async def test_llm_proposes_specialized_aigc_and_cv_directions() -> None:
 
     assert "Generative AI Engineering" in names
     assert "Computer Vision Engineering" in names
-    assert result.directions[0].matched_evidence[0].evidence_id == project_id
+    assert any(
+        evidence.evidence_id == project_id
+        for item in result.directions[:2]
+        for evidence in item.matched_evidence
+    )
 
 
 @pytest.mark.asyncio
@@ -589,3 +593,101 @@ async def test_hallucinated_evidence_ids_are_removed() -> None:
         for evidence in item.matched_evidence
     )
     assert all(item.direction != "Cloud Engineering" for item in result.directions)
+
+
+@pytest.mark.asyncio
+async def test_isolated_transferable_evidence_does_not_rival_coherent_profile() -> None:
+    candidate = CandidateProfile(
+        skills=[
+            SkillGroup(
+                category="AI",
+                skills=["Python", "PyTorch", "Machine Learning", "NLP"],
+                evidence=["Python, PyTorch, machine learning, NLP"],
+            )
+        ],
+        education=[
+            EducationItem(
+                institution="Example University",
+                field_of_study="Computer Science",
+                details=["Coursework in machine learning and statistics"],
+                evidence=["Computer Science"],
+            )
+        ],
+        projects=[
+            ProjectItem(
+                name="Language model evaluator",
+                technologies=["Python", "PyTorch"],
+                bullets=["Trained and evaluated an NLP model"],
+                evidence=["Trained and evaluated an NLP model"],
+            )
+        ],
+        experience=[
+            ExperienceItem(
+                organization="Student Association",
+                title="Event Coordinator",
+                bullets=["Coordinated one student event"],
+                evidence=["Coordinated one student event"],
+            )
+        ],
+        inferred_target_roles=inferred_roles(
+            "Machine Learning Engineer",
+            "AI / Machine Learning",
+            "Internship",
+        ),
+    )
+    summary = fallback_service().build_evidence_summary(candidate)
+    project_id = next(
+        item.evidence_id
+        for item in summary.project_signals
+        if item.text == "Trained and evaluated an NLP model"
+    )
+    ai_skill_id = next(
+        item.evidence_id
+        for item in summary.skill_signals
+        if item.text == "Machine Learning"
+    )
+    education_id = next(
+        item.evidence_id
+        for item in summary.education_signals
+        if "machine learning" in item.text.casefold()
+    )
+    coordination_id = next(
+        item.evidence_id
+        for item in summary.work_signals
+        if item.text == "Coordinated one student event"
+    )
+    proposals = fill_proposals(
+        [
+            proposal(
+                "Machine Learning Engineering",
+                "AI / Machine Learning",
+                [project_id, ai_skill_id, education_id],
+                fit_type="primary",
+                seniority="Internship",
+            ),
+            proposal(
+                "Business Operations",
+                "Business / Operations",
+                [coordination_id],
+                fit_type="primary",
+                seniority="Internship",
+            ),
+        ],
+        project_id,
+    )
+
+    result = await llm_service(proposals).recommend(candidate)
+    machine_learning = next(
+        item
+        for item in result.directions
+        if item.direction == "Machine Learning Engineering"
+    )
+    operations = next(
+        item
+        for item in result.directions
+        if item.direction == "Business Operations"
+    )
+
+    assert result.directions[0].direction == "Machine Learning Engineering"
+    assert operations.fit_type in {"transferable", "exploratory"}
+    assert machine_learning.score_midpoint - operations.score_midpoint >= 20
