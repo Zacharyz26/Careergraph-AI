@@ -15,11 +15,14 @@ from app.schemas.career_direction import (
 from app.services.career_direction_proposal_service import (
     CareerDirectionProposalService,
 )
+from app.services.capability_map import assess_capabilities, readiness_score
+from app.services.evidence_ledger import EvidenceLedger
 from app.services.matching_service import (
     CandidateEvidenceItem,
     MatchingService,
 )
 from app.services.matching_taxonomy import extract_concepts
+from app.services.user_facing_sanitizer import sanitize_user_facing_text
 
 
 @dataclass(frozen=True)
@@ -51,25 +54,32 @@ DIRECTION_CATALOG = (
     direction("Backend Engineering", "Software Engineering", {"api_development", "backend_development", "databases"}, {"python", "java", "c#", "node", "fastapi", "django", "spring"}, ("Backend Developer", "API Developer", "Software Engineer")),
     direction("Frontend Engineering", "Software Engineering", {"frontend_development", "software_testing"}, {"javascript", "typescript", "html", "css", "react", "angular", "vue"}, ("Frontend Developer", "UI Engineer", "Web Developer")),
     direction("DevOps and Cloud Engineering", "Software Engineering", {"devops", "cloud"}, {"docker", "kubernetes", "terraform", "aws", "azure", "gcp", "ci cd"}, ("DevOps Engineer", "Cloud Engineer", "Platform Engineer")),
-    direction("Machine Learning Engineering", "AI / Machine Learning", {"machine_learning", "deep_learning", "model_evaluation", "pytorch", "tensorflow"}, {"python", "scikit learn", "pytorch", "tensorflow"}, ("Machine Learning Engineer", "Applied ML Engineer", "ML Intern")),
-    direction("NLP and Language AI", "AI / Machine Learning", {"machine_learning", "nlp", "model_evaluation"}, {"python", "transformers", "language model", "nlp"}, ("NLP Engineer", "Applied AI Engineer", "Language AI Intern")),
+    direction("Machine Learning Engineering", "AI / Machine Learning", {"machine_learning", "deep_learning", "model_evaluation", "pytorch", "tensorflow"}, {"scikit learn", "pytorch", "tensorflow", "model training"}, ("Machine Learning Engineer", "Applied ML Engineer", "ML Intern")),
+    direction("Generative AI Engineering", "AI / Machine Learning", {"generative_ai", "machine_learning", "model_evaluation"}, {"generative ai", "aigc", "diffusion model", "image generation", "multimodal", "prompt engineering"}, ("Generative AI Engineer", "AIGC Engineer", "Applied AI Engineer")),
+    direction("Computer Vision and Multimodal AI", "AI / Machine Learning", {"computer_vision", "generative_ai", "deep_learning", "model_evaluation"}, {"computer vision", "image recognition", "image generation", "multimodal", "opencv"}, ("Computer Vision Engineer", "Multimodal AI Engineer", "Applied AI Engineer")),
+    direction("Applied AI Engineering", "AI / Machine Learning", {"machine_learning", "generative_ai", "model_evaluation"}, {"applied ai", "ai application", "ai system", "llm", "rag", "ai api"}, ("Applied AI Engineer", "AI Application Engineer", "AI Software Engineer")),
+    direction("NLP and Language AI", "AI / Machine Learning", {"nlp", "model_evaluation"}, {"transformers", "language model", "nlp", "text classification", "text generation"}, ("NLP Engineer", "Language AI Engineer", "NLP Intern")),
     direction("Data Analytics", "Data / Analytics", {"data_analysis", "sql", "statistics", "dashboards", "data_visualization"}, {"sql", "excel", "tableau", "power bi", "python", "r"}, ("Data Analyst", "Reporting Analyst", "Analytics Associate")),
     direction("Business Intelligence", "Data / Analytics", {"sql", "dashboards", "data_visualization", "data_analysis"}, {"tableau", "power bi", "looker", "excel"}, ("Business Intelligence Analyst", "BI Developer", "Reporting Analyst")),
     direction("Product Management", "Product", {"product_strategy", "roadmapping", "product_metrics", "user_research", "experimentation"}, {"product", "roadmap", "kpi", "a b testing"}, ("Associate Product Manager", "Product Analyst", "Product Manager")),
     direction("UX and Product Design", "Design", {"ui_ux", "prototyping", "figma", "user_research"}, {"figma", "wireframe", "prototype", "design"}, ("UX Designer", "Product Designer", "UX Research Assistant")),
-    direction("Digital Marketing", "Marketing", {"seo", "content_marketing", "social_media", "campaign_management", "marketing_analytics"}, {"seo", "campaign", "social media", "content"}, ("Marketing Coordinator", "Digital Marketing Specialist", "Campaign Assistant")),
+    direction("Digital Marketing", "Marketing", {"seo", "content_marketing", "social_media", "campaign_management"}, {"seo", "campaign", "social media", "content"}, ("Marketing Coordinator", "Digital Marketing Specialist", "Campaign Assistant")),
+    direction("Marketing Analytics", "Marketing", {"marketing_analytics", "campaign_management", "data_visualization"}, {"campaign analytics", "marketing analytics", "conversion", "engagement", "seo analytics"}, ("Marketing Analyst", "Growth Marketing Analyst", "Campaign Analyst")),
     direction("Financial Analysis", "Finance / Accounting", {"financial_modeling", "budgeting", "valuation", "risk_analysis", "excel"}, {"finance", "forecast", "variance", "excel"}, ("Financial Analyst", "FP&A Analyst", "Finance Associate")),
+    direction("Investment Analysis", "Finance / Accounting", {"financial_modeling", "valuation", "risk_analysis", "data_analysis"}, {"investment", "equity research", "dcf", "portfolio", "market research"}, ("Investment Analyst", "Equity Research Analyst", "Portfolio Analyst")),
     direction("Accounting and Audit", "Finance / Accounting", {"accounting", "auditing", "risk_controls", "compliance"}, {"gaap", "ifrs", "ledger", "reconciliation", "cpa"}, ("Staff Accountant", "Audit Associate", "Accounting Analyst")),
-    direction("Business Operations", "Business / Operations", {"process_improvement", "stakeholder_coordination", "budgeting", "data_analysis"}, {"operations", "process", "vendor", "schedule"}, ("Operations Coordinator", "Business Operations Analyst", "Program Coordinator")),
+    direction("Business Operations", "Business / Operations", {"process_improvement", "stakeholder_coordination", "budgeting"}, {"operations", "process", "vendor", "schedule"}, ("Operations Coordinator", "Business Operations Analyst", "Program Coordinator")),
+    direction("Operations Analytics", "Business / Operations", {"process_improvement", "data_analysis", "dashboards"}, {"operations analytics", "process metrics", "dashboard", "throughput", "efficiency"}, ("Operations Analyst", "Business Operations Analyst", "Process Analyst")),
     direction("Supply Chain and Logistics", "Business / Operations", {"logistics", "process_improvement", "stakeholder_coordination"}, {"inventory", "procurement", "warehouse", "supply chain"}, ("Supply Chain Analyst", "Logistics Coordinator", "Procurement Assistant")),
     direction("Clinical and Patient Operations", "Healthcare", {"patient_care", "clinical_operations", "medical_terminology"}, {"patient", "clinical", "medical", "nursing"}, ("Clinical Coordinator", "Patient Care Assistant", "Healthcare Operations Associate")),
-    direction("Healthcare Analytics", "Healthcare", {"healthcare_data", "data_analysis", "statistics"}, {"clinical data", "health data", "sql", "statistics"}, ("Healthcare Data Analyst", "Clinical Data Coordinator", "Health Informatics Analyst")),
+    direction("Healthcare Analytics", "Healthcare", {"healthcare_data", "data_analysis", "statistics"}, {"clinical data", "health data", "healthcare analytics", "statistics"}, ("Healthcare Data Analyst", "Clinical Data Coordinator", "Health Informatics Analyst")),
     direction("Research and Analysis", "Research", {"literature_review", "experimental_design", "publications", "statistics"}, {"research", "publication", "study", "experiment"}, ("Research Assistant", "Research Analyst", "Lab Coordinator")),
     direction("Teaching and Learning Support", "Education", {"teaching", "curriculum", "tutoring", "classroom_management"}, {"teaching", "lesson", "student", "curriculum"}, ("Teaching Assistant", "Tutor", "Education Program Assistant")),
     direction("Engineering Design and Analysis", "Engineering", {"experimental_design", "process_improvement"}, {"cad", "solidworks", "matlab", "simulation", "engineering"}, ("Junior Engineer", "Design Engineer", "Engineering Analyst")),
     direction("Sales and Account Development", "Sales / Customer Success", {"crm", "client_communication", "account_management"}, {"sales", "crm", "pipeline", "prospect"}, ("Sales Development Representative", "Account Coordinator", "Sales Associate")),
     direction("Customer Success and Support", "Sales / Customer Success", {"customer_support", "client_communication", "account_management"}, {"customer", "support", "client", "onboarding"}, ("Customer Success Associate", "Support Specialist", "Client Services Coordinator")),
     direction("Talent Acquisition and HR", "Human Resources", {"recruiting", "onboarding", "employee_relations"}, {"recruiting", "candidate", "human resources", "hr"}, ("HR Coordinator", "Recruiting Coordinator", "People Operations Assistant")),
+    direction("People Analytics and HR Operations", "Human Resources", {"recruiting", "onboarding", "data_analysis", "dashboards"}, {"people analytics", "hr analytics", "time-to-fill", "engagement survey", "hris"}, ("People Analytics Associate", "HR Operations Analyst", "People Operations Associate")),
     direction("Compliance and Risk", "Legal / Compliance", {"compliance", "risk_controls", "policy", "auditing"}, {"compliance", "regulatory", "governance", "controls"}, ("Compliance Analyst", "Risk and Controls Analyst", "Regulatory Associate")),
     direction("Contracts and Legal Operations", "Legal / Compliance", {"contracts", "policy", "compliance"}, {"contract", "legal", "policy"}, ("Legal Operations Coordinator", "Contracts Administrator", "Legal Assistant")),
     direction("General Internship Pathways", "General Internship", set(), {"intern", "internship", "student", "coursework"}, ("General Intern", "Program Intern", "Rotational Intern")),
@@ -121,97 +131,20 @@ class CareerDirectionService:
                 proposals,
             )
             if recommendations:
-                return CareerDirectionResponse(directions=recommendations)
+                fallback = self._deterministic_fallback(candidate, summary)
+                return CareerDirectionResponse(
+                    directions=self._merge_recommendations(
+                        recommendations,
+                        fallback.directions,
+                    )
+                )
         return self._deterministic_fallback(candidate, summary)
 
     def build_evidence_summary(
         self,
         candidate: CandidateProfile,
     ) -> CandidateEvidenceSummary:
-        counters = 0
-        buckets: dict[str, list[CareerEvidenceItem]] = {
-            "education_signals": [],
-            "skill_signals": [],
-            "work_signals": [],
-            "project_signals": [],
-            "paper_signals": [],
-            "patent_signals": [],
-            "certification_signals": [],
-            "leadership_signals": [],
-            "language_signals": [],
-        }
-
-        def add(bucket: str, source: str, text: str, strength: float) -> None:
-            nonlocal counters
-            normalized = self._normalize(text)
-            if not normalized:
-                return
-            if any(self._normalize(item.text) == normalized for item in buckets[bucket]):
-                return
-            counters += 1
-            buckets[bucket].append(
-                CareerEvidenceItem(
-                    evidence_id=f"E{counters:03d}",
-                    source_type=source,
-                    text=text.strip(),
-                    evidence_strength=strength,
-                    normalized_concepts=sorted(extract_concepts(normalized)),
-                )
-            )
-
-        for education in candidate.education:
-            for text in self._nonempty(
-                [
-                    education.degree,
-                    education.field_of_study,
-                    *education.details,
-                    *education.evidence,
-                ]
-            ):
-                add("education_signals", "education", text, 0.6)
-        for group in candidate.skills:
-            for skill in group.skills:
-                add("skill_signals", "skills", skill, 0.55)
-        for experience in candidate.experience:
-            for text in self._nonempty(
-                [experience.title, *experience.bullets, *experience.evidence]
-            ):
-                add("work_signals", "work", text, 1.0)
-                if self._is_leadership_signal(text):
-                    add("leadership_signals", "leadership", text, 0.95)
-        for project in candidate.projects:
-            for text in self._nonempty(
-                [
-                    project.name,
-                    project.description,
-                    *project.technologies,
-                    *project.bullets,
-                    *project.evidence,
-                ]
-            ):
-                add("project_signals", "project", text, 0.85)
-        for paper in candidate.papers:
-            for text in self._nonempty(
-                [paper.title, paper.description, *paper.topics, *paper.evidence]
-            ):
-                add("paper_signals", "paper", text, 0.9)
-        for patent in candidate.patents:
-            for text in self._nonempty(
-                [patent.title, patent.description, *patent.evidence]
-            ):
-                add("patent_signals", "patent", text, 0.95)
-        for certification in candidate.certifications:
-            for text in self._nonempty(
-                [certification.name, certification.issuer, *certification.evidence]
-            ):
-                add("certification_signals", "certification", text, 0.75)
-        for language in candidate.languages:
-            text = " ".join(
-                self._nonempty([language.language, language.proficiency])
-            )
-            if text:
-                add("language_signals", "language", text, 0.65)
-        return CandidateEvidenceSummary(**buckets)
+        return EvidenceLedger.from_candidate(candidate).summary
 
     def _validate_and_rank(
         self,
@@ -269,6 +202,59 @@ class CareerDirectionService:
             self._proposal_recommendation(item, rank)
             for rank, item in enumerate(selected, start=1)
         ]
+
+    def _merge_recommendations(
+        self,
+        proposal_recommendations: list[CareerDirectionRecommendation],
+        catalog_recommendations: list[CareerDirectionRecommendation],
+    ) -> list[CareerDirectionRecommendation]:
+        by_key: dict[tuple[str, RoleFamily], CareerDirectionRecommendation] = {}
+        for recommendation in [*proposal_recommendations, *catalog_recommendations]:
+            key = (
+                self._normalize(recommendation.direction),
+                recommendation.role_family,
+            )
+            current = by_key.get(key)
+            if current is None or self._recommendation_sort_key(
+                recommendation
+            ) > self._recommendation_sort_key(current):
+                by_key[key] = recommendation
+
+        merged = sorted(
+            by_key.values(),
+            key=self._recommendation_sort_key,
+            reverse=True,
+        )[:5]
+        return [
+            recommendation.model_copy(update={"rank": rank})
+            for rank, recommendation in enumerate(merged, start=1)
+        ]
+
+    def _recommendation_sort_key(
+        self,
+        recommendation: CareerDirectionRecommendation,
+    ) -> tuple[int, int, int, int]:
+        fit_rank = {
+            "primary": 3,
+            "secondary": 2,
+            "transferable": 1,
+            "exploratory": 0,
+        }[recommendation.fit_type]
+        confidence_rank = {
+            "High": 2,
+            "Medium": 1,
+            "Low": 0,
+        }[recommendation.confidence_level]
+        strong_evidence_count = sum(
+            evidence.source_type in self.STRONG_SOURCES
+            for evidence in recommendation.matched_evidence
+        )
+        return (
+            recommendation.score_midpoint,
+            fit_rank,
+            strong_evidence_count,
+            confidence_rank,
+        )
 
     def _score_proposal(
         self,
@@ -339,6 +325,14 @@ class CareerDirectionService:
             proposal.role_family,
         )
         gap_severity = min(1, len(proposal.possible_gaps) / 4)
+        capability_assessments = assess_capabilities(
+            summary,
+            proposal.role_family,
+        )
+        capability_readiness = readiness_score(capability_assessments)
+        required_missing = sum(
+            item.status == "missing_proof" for item in capability_assessments
+        )
         score = (
             evidence_strength * 20
             + diversity * 12
@@ -347,8 +341,16 @@ class CareerDirectionService:
             + seniority_fit * 7
             + (1 - gap_severity) * 5
             + coherence * 25
-            + evidence_concentration * 10
+            + evidence_concentration * 6
+            + capability_readiness * 4
         )
+        if required_missing:
+            score -= min(4, required_missing * 2)
+        capability_gaps = [
+            assessment.gap_label
+            for assessment in capability_assessments
+            if assessment.status in {"missing_proof", "optional_enhancement"}
+        ][:3]
         if skill_only:
             score = min(score, 38)
         isolated_support = len(evidence) == 1 or len(sources) == 1
@@ -359,6 +361,9 @@ class CareerDirectionService:
                 if proposal_family_support > 0
                 else "exploratory"
             )
+        elif coherence < 0.65 and not strong_evidence:
+            score = min(score, 52)
+            fit_type = "transferable" if proposal_family_support > 0 else "exploratory"
         elif fit_type == "primary" and (
             coherence < 0.7
             or (diversity < 0.5 and not strong_evidence)
@@ -384,6 +389,7 @@ class CareerDirectionService:
             "directness": directness,
             "coherence": coherence,
             "strong_evidence": strong_evidence,
+            "capability_gaps": capability_gaps,
         }
 
     def _proposal_recommendation(
@@ -404,17 +410,26 @@ class CareerDirectionService:
         )
         uncertainty = 6 if confidence == "High" else 10 if confidence == "Medium" else 15
         strengths = [
-            f"{evidence_item.source_type.title()} evidence: {evidence_item.text}"
+            sanitize_user_facing_text(
+                f"{evidence_item.source_type.title()} evidence: {evidence_item.text}"
+            )
             for evidence_item in evidence[:4]
         ]
         advice = [
-            f"Lead with evidence {evidence_item.evidence_id}: {evidence_item.text}"
+            sanitize_user_facing_text(
+                f"Lead with this {evidence_item.source_type} evidence: "
+                f"{evidence_item.text}"
+            )
             for evidence_item in evidence[:2]
         ]
         if proposal.possible_gaps:
             advice.append(
                 "Address only gaps you can support with real experience; do not add unverified claims."
             )
+        gaps = [
+            sanitize_user_facing_text(gap)
+            for gap in [*proposal.possible_gaps, *item.get("capability_gaps", [])]
+        ]
         return CareerDirectionRecommendation(
             rank=rank,
             direction=proposal.direction,
@@ -436,7 +451,7 @@ class CareerDirectionService:
                 for evidence_item in evidence
             ],
             strengths_for_this_direction=strengths,
-            gaps_for_this_direction=proposal.possible_gaps,
+            gaps_for_this_direction=self._deduplicate_text(gaps)[:5],
             resume_positioning_advice=advice,
             example_job_titles=proposal.example_job_titles,
         )
@@ -530,10 +545,34 @@ class CareerDirectionService:
             + inferred_score * 0.05
             + coherence_score * 0.15
         )
+        capability_assessments = assess_capabilities(
+            summary,
+            definition.role_family,
+        )
+        capability_readiness = readiness_score(capability_assessments) * 100
+        required_missing = sum(
+            item.status == "missing_proof" for item in capability_assessments
+        )
+        score = score * 0.96 + capability_readiness * 0.04
+        if required_missing:
+            score -= min(4, required_missing)
         source_count = len({item.source_type for item, _ in matched})
         if source_count == 1 and coherence_score < 60:
             score = min(score, 48)
+        elif coherence_score < 65 and (
+            definition.role_family
+            != max(family_support, key=family_support.get, default=definition.role_family)
+        ):
+            score = min(score, 52)
         supported = set().union(*(signals for _, signals in matched)) if matched else set()
+        capability_gaps = [
+            item.gap_label
+            for item in capability_assessments
+            if item.status in {"missing_proof", "optional_enhancement"}
+        ][:3]
+        missing_signals = tuple(capability_gaps) or tuple(
+            sorted((definition.concepts | definition.keywords) - supported)[:3]
+        )
         return ScoredDirection(
             definition=definition,
             score=min(100, score),
@@ -545,7 +584,7 @@ class CareerDirectionService:
             evidence_score=evidence_score,
             coherence_score=coherence_score,
             evidence=tuple(sorted(matched, key=lambda pair: pair[0].evidence_strength, reverse=True)[:6]),
-            missing_signals=tuple(sorted((definition.concepts | definition.keywords) - supported)[:3]),
+            missing_signals=missing_signals,
         )
 
     def _catalog_recommendation(
@@ -588,15 +627,19 @@ class CareerDirectionService:
             confidence_level=confidence,
             matched_evidence=evidence,
             strengths_for_this_direction=[
-                f"{value.source_type.title()} evidence: {value.text}"
+                sanitize_user_facing_text(
+                    f"{value.source_type.title()} evidence: {value.text}"
+                )
                 for value in evidence[:4]
             ],
             gaps_for_this_direction=[
-                f"No clear evidence currently supports: {signal.replace('_', ' ')}."
+                self._gap_display_text(signal)
                 for signal in item.missing_signals
             ],
             resume_positioning_advice=[
-                f"Lead with evidence {value.evidence_id}: {value.text}"
+                sanitize_user_facing_text(
+                    f"Lead with this {value.source_type} evidence: {value.text}"
+                )
                 for value in evidence[:2]
             ],
             example_job_titles=list(item.definition.example_titles),
@@ -768,6 +811,23 @@ class CareerDirectionService:
                 seen.add(item.evidence_id)
                 result.append(item)
         return result
+
+    def _deduplicate_text(self, values: list[str]) -> list[str]:
+        seen = set()
+        result = []
+        for value in values:
+            normalized = self._normalize(value)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                result.append(value)
+        return result
+
+    def _gap_display_text(self, signal: str) -> str:
+        if "_" in signal and signal == signal.casefold():
+            return sanitize_user_facing_text(
+                f"No clear evidence currently supports: {signal.replace('_', ' ')}."
+            )
+        return sanitize_user_facing_text(signal)
 
     def _resolve_summary_evidence(
         self,

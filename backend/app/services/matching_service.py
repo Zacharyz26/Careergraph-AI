@@ -21,6 +21,7 @@ from app.services.matching_taxonomy import (
     extract_concepts,
     has_transferable_relationship,
 )
+from app.services.user_facing_sanitizer import sanitize_user_facing_text
 
 EvidenceSource = Literal[
     "skills",
@@ -609,7 +610,7 @@ class MatchingService:
         normalized = self._normalize(text)
         return CandidateEvidenceItem(
             source_type=source_type,
-            text=display_text,
+            text=sanitize_user_facing_text(display_text),
             normalized_tokens=frozenset(normalized.split()),
             normalized_concepts=extract_concepts(normalized),
             evidence_strength=SOURCE_STRENGTH[source_type],
@@ -620,11 +621,12 @@ class MatchingService:
         requirement_type: RequirementType,
         text: str,
     ) -> JobRequirement:
-        normalized = self._normalize(text)
+        display_text = sanitize_user_facing_text(text)
+        normalized = self._normalize(display_text)
         return JobRequirement(
             requirement_type=requirement_type,
             importance=REQUIREMENT_IMPORTANCE[requirement_type],
-            text=text,
+            text=display_text,
             normalized_tokens=frozenset(normalized.split()),
             normalized_concepts=extract_concepts(normalized),
         )
@@ -656,7 +658,7 @@ class MatchingService:
             similarity_score=decision.similarity_score,
             evaluation_method=decision.evaluation_method,
             candidate_evidence=evidence,
-            reason=decision.reason,
+            reason=sanitize_user_facing_text(decision.reason),
         )
 
     def _coverage(
@@ -729,19 +731,31 @@ class MatchingService:
                 continue
             if match.requirement_type == "required_skill":
                 penalty += 7
-                risks.append(f"Missing required skill: {match.requirement}")
+                risks.append(
+                    sanitize_user_facing_text(
+                        f"Missing required skill: {match.requirement}"
+                    )
+                )
             elif match.requirement_type == "experience_requirement":
                 penalty += 6
                 risks.append(
-                    f"Missing experience requirement: {match.requirement}"
+                    sanitize_user_facing_text(
+                        f"Missing experience requirement: {match.requirement}"
+                    )
                 )
             elif match.requirement_type == "qualification":
                 penalty += 5
-                risks.append(f"Missing qualification: {match.requirement}")
+                risks.append(
+                    sanitize_user_facing_text(
+                        f"Missing qualification: {match.requirement}"
+                    )
+                )
             elif match.requirement_type == "education_requirement":
                 penalty += 4
                 risks.append(
-                    f"Education requirement not supported: {match.requirement}"
+                    sanitize_user_facing_text(
+                        f"Education requirement not supported: {match.requirement}"
+                    )
                 )
         return min(35, penalty), risks
 
@@ -787,7 +801,7 @@ class MatchingService:
             status: sum(match.match_status == status for match in matches)
             for status in STATUS_VALUE
         }
-        return (
+        return sanitize_user_facing_text(
             f"Score {score}/100 from {counts['full_match']} full, "
             f"{counts['partial_match']} partial, "
             f"{counts['transferable_match']} transferable, and "

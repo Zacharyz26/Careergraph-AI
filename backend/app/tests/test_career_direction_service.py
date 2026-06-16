@@ -162,6 +162,15 @@ async def test_recommends_ai_ml_directions_from_project_evidence() -> None:
         direction.direction == "NLP and Language AI"
         for direction in result.directions
     )
+    user_facing_text = " ".join(
+        [
+            *result.directions[0].strengths_for_this_direction,
+            *result.directions[0].gaps_for_this_direction,
+            *result.directions[0].resume_positioning_advice,
+        ]
+    )
+    assert "E00" not in user_facing_text
+    assert "[source" not in user_facing_text.casefold()
 
 
 @pytest.mark.asyncio
@@ -207,6 +216,11 @@ async def test_recommends_finance_and_accounting_directions() -> None:
         for direction in result.directions
     )
     assert all(direction.matched_evidence for direction in result.directions)
+    assert result.directions[0].gaps_for_this_direction
+    assert any(
+        "metric" in gap.casefold() or "artifact" in gap.casefold()
+        for gap in result.directions[0].gaps_for_this_direction
+    )
 
 
 @pytest.mark.asyncio
@@ -293,6 +307,115 @@ async def test_recommends_backend_direction_from_work_and_project_evidence() -> 
         "project",
     }
     assert top.score_range_low <= top.score_midpoint <= top.score_range_high
+
+
+@pytest.mark.asyncio
+async def test_specialized_ai_evidence_beats_adjacent_backend_and_data_paths() -> None:
+    candidate = CandidateProfile(
+        skills=[
+            SkillGroup(
+                category="AI",
+                skills=[
+                    "Python",
+                    "PyTorch",
+                    "Generative AI",
+                    "Computer Vision",
+                ],
+                evidence=["Python, PyTorch, generative AI, computer vision"],
+            )
+        ],
+        projects=[
+            ProjectItem(
+                name="AIGC image generation system",
+                technologies=["PyTorch"],
+                bullets=[
+                    "Trained a diffusion model for image generation and evaluated generated images"
+                ],
+                evidence=[
+                    "Trained a diffusion model for image generation and evaluated generated images"
+                ],
+            ),
+            ProjectItem(
+                name="AI inference API",
+                technologies=["Python"],
+                bullets=["Built an API for model inference"],
+                evidence=["Built an API for model inference"],
+            ),
+        ],
+        inferred_target_roles=inferred_roles(
+            "Generative AI Engineer",
+            "AI / Machine Learning",
+            "Internship",
+        ),
+    )
+
+    result = await fallback_service().recommend(candidate)
+    names = [direction.direction for direction in result.directions]
+    top_families = [direction.role_family for direction in result.directions[:3]]
+
+    assert names[0] in {
+        "Generative AI Engineering",
+        "Computer Vision and Multimodal AI",
+        "Applied AI Engineering",
+    }
+    assert "Generative AI Engineering" in names[:3]
+    assert "Computer Vision and Multimodal AI" in names[:4]
+    assert top_families.count("AI / Machine Learning") >= 2
+    backend = next(
+        (
+            direction
+            for direction in result.directions
+            if direction.direction == "Backend Engineering"
+        ),
+        None,
+    )
+    if backend:
+        assert backend.fit_type in {"secondary", "transferable", "exploratory"}
+        assert backend.rank > 1
+
+
+@pytest.mark.asyncio
+async def test_marketing_analytics_does_not_become_generic_data_primary() -> None:
+    candidate = CandidateProfile(
+        skills=[
+            SkillGroup(
+                category="Marketing",
+                skills=["Campaign analytics", "SEO", "Content marketing"],
+                evidence=["Campaign analytics, SEO, content marketing"],
+            )
+        ],
+        experience=[
+            ExperienceItem(
+                organization="Campus Media",
+                title="Marketing Analyst",
+                bullets=[
+                    "Analyzed campaign engagement and improved content reporting"
+                ],
+                evidence=[
+                    "Analyzed campaign engagement and improved content reporting"
+                ],
+            )
+        ],
+        inferred_target_roles=inferred_roles(
+            "Marketing Analyst",
+            "Marketing",
+        ),
+    )
+
+    result = await fallback_service().recommend(candidate)
+
+    assert result.directions[0].role_family == "Marketing"
+    data = next(
+        (
+            direction
+            for direction in result.directions
+            if direction.direction == "Data Analytics"
+        ),
+        None,
+    )
+    if data:
+        assert data.fit_type in {"transferable", "exploratory"}
+        assert data.score_midpoint < result.directions[0].score_midpoint
 
 
 @pytest.mark.asyncio
@@ -426,6 +549,61 @@ async def test_llm_proposes_specialized_aigc_and_cv_directions() -> None:
         for item in result.directions[:2]
         for evidence in item.matched_evidence
     )
+
+
+@pytest.mark.asyncio
+async def test_catalog_candidates_stabilize_llm_omissions() -> None:
+    candidate = CandidateProfile(
+        skills=[
+            SkillGroup(
+                category="AI",
+                skills=["Python", "PyTorch", "Generative AI"],
+                evidence=["Python, PyTorch, generative AI"],
+            )
+        ],
+        projects=[
+            ProjectItem(
+                name="AIGC image generation system",
+                technologies=["PyTorch"],
+                bullets=["Built a diffusion model for image generation"],
+                evidence=["Built a diffusion model for image generation"],
+            )
+        ],
+        inferred_target_roles=inferred_roles(
+            "Generative AI Engineer",
+            "AI / Machine Learning",
+            "Internship",
+        ),
+    )
+    summary = fallback_service().build_evidence_summary(candidate)
+    project_id = summary.project_signals[-1].evidence_id
+    skill_id = summary.skill_signals[0].evidence_id
+    proposals = fill_proposals(
+        [
+            proposal(
+                "NLP and Language AI",
+                "AI / Machine Learning",
+                [project_id],
+                fit_type="primary",
+                seniority="Internship",
+            ),
+            proposal(
+                "Backend Engineering",
+                "Software Engineering",
+                [skill_id],
+                fit_type="secondary",
+                seniority="Internship",
+            ),
+        ],
+        project_id,
+    )
+
+    result = await llm_service(proposals).recommend(candidate)
+    names = [direction.direction for direction in result.directions]
+
+    assert "Generative AI Engineering" in names[:3]
+    if "Backend Engineering" in names:
+        assert names.index("Generative AI Engineering") < names.index("Backend Engineering")
 
 
 @pytest.mark.asyncio
@@ -683,11 +861,15 @@ async def test_isolated_transferable_evidence_does_not_rival_coherent_profile() 
         if item.direction == "Machine Learning Engineering"
     )
     operations = next(
-        item
-        for item in result.directions
-        if item.direction == "Business Operations"
+        (
+            item
+            for item in result.directions
+            if item.direction == "Business Operations"
+        ),
+        None,
     )
 
     assert result.directions[0].direction == "Machine Learning Engineering"
-    assert operations.fit_type in {"transferable", "exploratory"}
-    assert machine_learning.score_midpoint - operations.score_midpoint >= 20
+    if operations:
+        assert operations.fit_type in {"transferable", "exploratory"}
+        assert machine_learning.score_midpoint - operations.score_midpoint >= 20

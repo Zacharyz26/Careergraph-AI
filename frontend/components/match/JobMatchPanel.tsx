@@ -68,6 +68,11 @@ export function JobMatchPanel({
           compact={matchResult !== null}
           detail="This may take up to 60 seconds. Any previous match remains visible below."
           label="Parsing the job and calculating evidence coverage..."
+          stages={[
+            "Extracting required skills, responsibilities, and qualifications.",
+            "Matching each requirement to existing candidate evidence.",
+            "Calculating coverage, risk penalties, and explanation.",
+          ]}
         />
       ) : null}
 

@@ -210,6 +210,17 @@ export interface MatchResult {
 }
 
 export type SuggestionMode = "career_direction" | "job_specific" | "general";
+export type AdvisorQuality = "high" | "medium" | "low";
+export type EvidenceGapCategory =
+  | "target_skill"
+  | "tool_or_platform"
+  | "implementation_or_delivery"
+  | "portfolio_or_proof"
+  | "impact_or_metrics"
+  | "domain_experience"
+  | "credential_or_education"
+  | "communication_or_positioning"
+  | "other";
 
 export interface SuggestionItem {
   suggestion_type:
@@ -229,15 +240,54 @@ export interface SuggestionItem {
   source_evidence_text: string[];
   related_requirement_or_direction?: string;
   risk_level: "low" | "medium" | "high";
+  quality_score: number;
+  quality_level: AdvisorQuality;
   requires_user_review: true;
   should_add_to_resume: boolean;
 }
 
+export interface PositioningAdviceItem {
+  target_section: string;
+  advice: string;
+  reason: string;
+  source_evidence_ids: string[];
+  source_evidence_text: string[];
+  related_requirement_or_direction?: string;
+  quality_score: number;
+  quality_level: AdvisorQuality;
+  requires_user_review: true;
+}
+
+export interface EvidenceGapItem {
+  gap: string;
+  category: EvidenceGapCategory;
+  priority: "high" | "medium" | "low";
+  why_it_matters: string;
+  evidence_needed: string;
+  related_requirement_or_direction?: string;
+  should_add_to_resume: false;
+  requires_user_review: true;
+}
+
+export interface RecommendedNextActionItem {
+  action: string;
+  rationale: string;
+  target_gap?: string;
+  suggested_artifact?: string;
+  priority: "high" | "medium" | "low";
+  quality_score: number;
+  quality_level: AdvisorQuality;
+  should_add_to_resume: false;
+  requires_user_review: true;
+}
+
 export interface SuggestionResponse {
   overall_summary: string;
-  suggestions: SuggestionItem[];
+  resume_ready_improvements: SuggestionItem[];
+  positioning_advice: PositioningAdviceItem[];
+  evidence_gaps: EvidenceGapItem[];
+  recommended_next_actions: RecommendedNextActionItem[];
   missing_but_not_addable: string[];
-  suggested_resume_focus: string[];
   warnings: string[];
 }
 

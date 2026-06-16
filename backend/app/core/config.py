@@ -22,6 +22,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str = "gpt-4o-mini"
+    openai_profile_model: str | None = None
+    openai_direction_model: str | None = None
+    openai_advisor_model: str | None = None
+    openai_judge_model: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str | None = None
     openai_timeout_seconds: float = Field(default=60, gt=0)
@@ -36,6 +40,19 @@ class Settings(BaseSettings):
     @field_validator("openai_base_url", mode="before")
     @classmethod
     def normalize_openai_base_url(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator(
+        "openai_profile_model",
+        "openai_direction_model",
+        "openai_advisor_model",
+        "openai_judge_model",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_model(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
         return value

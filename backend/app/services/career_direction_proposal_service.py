@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.schemas.career_direction import (
     CandidateEvidenceSummary,
     CareerDirectionProposalSet,
@@ -37,7 +38,9 @@ class CareerDirectionProposalService:
         *,
         enabled: bool = True,
     ) -> None:
-        self.llm_service = llm_service or LLMService()
+        self.llm_service = llm_service or LLMService(
+            model=settings.openai_direction_model or settings.openai_model
+        )
         self.enabled = enabled
 
     @property

@@ -26,6 +26,11 @@ export function CandidateProfilePanel({
           <LoadingState
             detail="This may take up to 60 seconds."
             label="Parsing your resume into a structured profile..."
+            stages={[
+              "Extracting candidate evidence from resume text.",
+              "Separating work, projects, skills, education, and gaps.",
+              "Checking inferred roles against resume facts.",
+            ]}
           />
         ) : null}
       </section>
@@ -46,6 +51,11 @@ export function CandidateProfilePanel({
           compact
           detail="This may take up to 60 seconds. Your current profile remains available below."
           label="Parsing your resume into a structured profile..."
+          stages={[
+            "Refreshing candidate evidence.",
+            "Rechecking inferred roles and content gaps.",
+            "Keeping the existing profile visible while parsing finishes.",
+          ]}
         />
       ) : null}
 

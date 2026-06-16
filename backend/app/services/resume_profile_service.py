@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.schemas.candidate import CandidateProfile
 from app.schemas.resume import ResumeBlock, VerifiedFact
 from app.services.llm_service import LLMService
@@ -71,7 +72,9 @@ Grounding rules:
 
 class ResumeProfileService:
     def __init__(self, llm_service: LLMService | None = None) -> None:
-        self.llm_service = llm_service or LLMService()
+        self.llm_service = llm_service or LLMService(
+            model=settings.openai_profile_model or settings.openai_model
+        )
 
     async def build_profile(self, extracted_text: str) -> CandidateProfile:
         profile = await self.llm_service.generate_structured(

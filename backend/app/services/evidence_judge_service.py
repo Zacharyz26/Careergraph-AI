@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.schemas.match import EvidenceJudgeResult
 from app.services.llm_service import LLMService, LLMServiceError
 
@@ -26,7 +27,9 @@ class EvidenceJudgeService:
         *,
         enabled: bool = False,
     ) -> None:
-        self.llm_service = llm_service or LLMService()
+        self.llm_service = llm_service or LLMService(
+            model=settings.openai_judge_model or settings.openai_model
+        )
         self.enabled = enabled
 
     @property

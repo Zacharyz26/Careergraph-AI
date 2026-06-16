@@ -218,7 +218,10 @@ export function CareerGraphWorkflow() {
               <div>
                 <span className="eyebrow">Step 4</span>
                 <h2>Improve resume positioning</h2>
-                <p>Generate safe suggestions for <strong>{selectedDirection.direction}</strong>.</p>
+                <p>
+                  Generate safe improvements, gap analysis, and next actions for{" "}
+                  <strong>{selectedDirection.direction}</strong>.
+                </p>
               </div>
               <button
                 className="button button--dark button--wide"
@@ -226,7 +229,7 @@ export function CareerGraphWorkflow() {
                 onClick={handleSuggestions}
                 type="button"
               >
-                {suggestionsLoading ? "Generating suggestions…" : suggestions ? "Refresh improvement suggestions" : "Generate improvement suggestions"}
+                {suggestionsLoading ? "Generating advisor…" : suggestions ? "Refresh advisor" : "Generate positioning advisor"}
               </button>
             </section>
           ) : null}

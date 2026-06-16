@@ -32,6 +32,11 @@ export function CareerDirectionCards({
           compact={directions.length > 0}
           detail="This may take up to 60 seconds."
           label="Recommending career directions..."
+          stages={[
+            "Evaluating career hypotheses from your evidence.",
+            "Checking directness, source diversity, and role-family coherence.",
+            "Ranking primary, secondary, transferable, and exploratory paths.",
+          ]}
         />
       ) : null}
       <div className="direction-list">
@@ -75,7 +80,7 @@ export function CareerDirectionCards({
             </ul>
           </div>
           <div>
-            <h3>Current gaps</h3>
+            <h3>Readiness gaps</h3>
             {selected.gaps_for_this_direction.length ? (
               <ul className="clean-list clean-list--warning">
                 {selected.gaps_for_this_direction.slice(0, 3).map((item) => (

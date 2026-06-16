@@ -40,6 +40,19 @@ SuggestionType = Literal[
     "evidence_strengthening",
 ]
 SuggestionRisk = Literal["low", "medium", "high"]
+NextActionPriority = Literal["high", "medium", "low"]
+AdvisorQuality = Literal["high", "medium", "low"]
+EvidenceGapCategory = Literal[
+    "target_skill",
+    "tool_or_platform",
+    "implementation_or_delivery",
+    "portfolio_or_proof",
+    "impact_or_metrics",
+    "domain_experience",
+    "credential_or_education",
+    "communication_or_positioning",
+    "other",
+]
 
 
 class SuggestionGenerateRequest(APIModel):
@@ -83,15 +96,56 @@ class SuggestionItem(APIModel):
     source_evidence_text: list[str] = Field(default_factory=list)
     related_requirement_or_direction: str | None = None
     risk_level: SuggestionRisk
+    quality_score: int = Field(default=50, ge=0, le=100)
+    quality_level: AdvisorQuality = "medium"
     requires_user_review: Literal[True] = True
     should_add_to_resume: bool
 
 
+class PositioningAdviceItem(APIModel):
+    target_section: str
+    advice: str
+    reason: str
+    source_evidence_ids: list[str] = Field(default_factory=list)
+    source_evidence_text: list[str] = Field(default_factory=list)
+    related_requirement_or_direction: str | None = None
+    quality_score: int = Field(default=50, ge=0, le=100)
+    quality_level: AdvisorQuality = "medium"
+    requires_user_review: Literal[True] = True
+
+
+class EvidenceGapItem(APIModel):
+    gap: str
+    category: EvidenceGapCategory = "other"
+    priority: NextActionPriority = "medium"
+    why_it_matters: str
+    evidence_needed: str
+    related_requirement_or_direction: str | None = None
+    should_add_to_resume: Literal[False] = False
+    requires_user_review: Literal[True] = True
+
+
+class RecommendedNextActionItem(APIModel):
+    action: str
+    rationale: str
+    target_gap: str | None = None
+    suggested_artifact: str | None = None
+    priority: NextActionPriority = "medium"
+    quality_score: int = Field(default=50, ge=0, le=100)
+    quality_level: AdvisorQuality = "medium"
+    should_add_to_resume: Literal[False] = False
+    requires_user_review: Literal[True] = True
+
+
 class SuggestionResponse(APIModel):
     overall_summary: str
-    suggestions: list[SuggestionItem] = Field(default_factory=list)
+    resume_ready_improvements: list[SuggestionItem] = Field(default_factory=list)
+    positioning_advice: list[PositioningAdviceItem] = Field(default_factory=list)
+    evidence_gaps: list[EvidenceGapItem] = Field(default_factory=list)
+    recommended_next_actions: list[RecommendedNextActionItem] = Field(
+        default_factory=list
+    )
     missing_but_not_addable: list[str] = Field(default_factory=list)
-    suggested_resume_focus: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 

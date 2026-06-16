@@ -177,6 +177,47 @@ async def test_finance_candidate_vs_financial_analyst_job() -> None:
 
 
 @pytest.mark.asyncio
+async def test_match_output_does_not_leak_internal_markers() -> None:
+    candidate = CandidateProfile(
+        skills=[
+            SkillGroup(
+                category="Software",
+                skills=["Python (E018)"],
+                evidence=["Python (E018)"],
+            )
+        ],
+        inferred_target_roles=roles("Software Engineer", "Software Engineering"),
+    )
+    job = JobProfile(
+        job_title="Software Engineer",
+        role_family="Software Engineering",
+        seniority_level="Entry-level",
+        employment_type="Full-time",
+        required_skills=[requirement("Python [source: jd]")],
+    )
+
+    result = await deterministic_service().score(candidate, job)
+    output = " ".join(
+        [
+            result.explanation,
+            *result.risks,
+            *result.matched_required_skills,
+            *result.missing_required_skills,
+            *[match.requirement for match in result.requirement_matches],
+            *[match.reason for match in result.requirement_matches],
+            *[
+                evidence.text
+                for match in result.requirement_matches
+                for evidence in match.candidate_evidence
+            ],
+        ]
+    )
+
+    assert "E018" not in output
+    assert "[source" not in output.casefold()
+
+
+@pytest.mark.asyncio
 async def test_marketing_candidate_vs_marketing_coordinator_job() -> None:
     candidate = CandidateProfile(
         skills=[
