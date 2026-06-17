@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     career_directions_enable_llm: bool = True
     database_url: str = "postgresql+asyncpg://careergraph:careergraph@localhost:5432/careergraph"
     redis_url: str = "redis://localhost:6379/0"
-    allowed_origins: str = "http://localhost:3000"
+    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     @field_validator("openai_base_url", mode="before")
     @classmethod

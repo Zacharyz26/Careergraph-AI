@@ -1,9 +1,9 @@
 const steps = [
-  "Upload",
-  "Profile",
-  "Directions",
-  "Suggestions",
-  "Job match",
+  "Resume",
+  "Evidence",
+  "Direction",
+  "Advisor",
+  "Job fit",
 ] as const;
 
 export function WorkflowStepper({ currentStep }: { currentStep: number }) {

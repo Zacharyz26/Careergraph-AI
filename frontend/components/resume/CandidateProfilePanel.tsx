@@ -6,30 +6,32 @@ export function CandidateProfilePanel({
   profile,
   isLoading = false,
   error = null,
+  compact = false,
 }: {
   profile: CandidateProfile | null;
   isLoading?: boolean;
   error?: string | null;
+  compact?: boolean;
 }) {
   if (!profile) {
     return (
-      <section className="card result-card">
+      <section className={`card result-card${compact ? " result-card--compact" : ""}`}>
         <div className="card-heading">
           <div>
-            <span className="eyebrow">Candidate profile</span>
-            <h2>Building your structured profile</h2>
-            <p>Your extracted resume remains grounded in the source document.</p>
+            <span className="eyebrow">Evidence profile</span>
+            <h2>Building your career evidence</h2>
+            <p>CareerGraph is organizing the resume into reviewable strengths, skills, and proof points.</p>
           </div>
         </div>
         {error ? <ErrorMessage message={error} /> : null}
         {isLoading ? (
           <LoadingState
             detail="This may take up to 60 seconds."
-            label="Parsing your resume into a structured profile..."
+            label="Building your evidence profile..."
             stages={[
-              "Extracting candidate evidence from resume text.",
-              "Separating work, projects, skills, education, and gaps.",
-              "Checking inferred roles against resume facts.",
+              "Reading skills, projects, education, and experience.",
+              "Separating verified facts from possible positioning.",
+              "Preparing a concise profile summary for the workspace.",
             ]}
           />
         ) : null}
@@ -44,17 +46,17 @@ export function CandidateProfilePanel({
     "Evidence-based professional profile";
 
   return (
-    <section className="card result-card">
+    <section className={`card result-card${compact ? " result-card--compact" : ""}`}>
       {error ? <ErrorMessage message={error} /> : null}
       {isLoading ? (
         <LoadingState
           compact
           detail="This may take up to 60 seconds. Your current profile remains available below."
-          label="Parsing your resume into a structured profile..."
+          label="Refreshing your evidence profile..."
           stages={[
-            "Refreshing candidate evidence.",
-            "Rechecking inferred roles and content gaps.",
-            "Keeping the existing profile visible while parsing finishes.",
+            "Refreshing skills, roles, and project evidence.",
+            "Rechecking profile strengths against resume facts.",
+            "Keeping the existing profile visible while the update finishes.",
           ]}
         />
       ) : null}
@@ -69,14 +71,14 @@ export function CandidateProfilePanel({
             .toUpperCase()}
         </div>
         <div>
-          <span className="eyebrow">Candidate profile</span>
+          <span className="eyebrow">Evidence profile</span>
           <h2>{name}</h2>
           <p>{headline}</p>
         </div>
       </div>
 
       <div className="profile-grid">
-        <ProfileSection title="Core skills">
+        <ProfileSection title="Core skill signals">
           <div className="tag-list">
             {profile.skills.flatMap((group) =>
               group.skills.map((skill) => (
@@ -84,14 +86,14 @@ export function CandidateProfilePanel({
                   {skill}
                 </span>
               )),
-            )}
+            ).slice(0, compact ? 10 : undefined)}
           </div>
         </ProfileSection>
 
-        <ProfileSection title="Strengths">
+        <ProfileSection title="Strongest profile signals">
           {profile.strengths.length ? (
             <ul className="clean-list">
-              {profile.strengths.slice(0, 4).map((strength) => (
+              {profile.strengths.slice(0, compact ? 3 : 4).map((strength) => (
                 <li key={strength}>{strength}</li>
               ))}
             </ul>
@@ -108,10 +110,12 @@ export function CandidateProfilePanel({
         <Stat value={profile.certifications.length} label="Certifications" />
       </div>
 
-      <details className="disclosure">
-        <summary>View structured profile JSON</summary>
-        <pre>{JSON.stringify(profile, null, 2)}</pre>
-      </details>
+      {compact ? null : (
+        <details className="disclosure">
+          <summary>View detailed profile data</summary>
+          <pre>{JSON.stringify(profile, null, 2)}</pre>
+        </details>
+      )}
     </section>
   );
 }

@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useState } from "react";
 
 import { CareerDirectionCards } from "@/components/career/CareerDirectionCards";
 import { JobMatchPanel } from "@/components/match/JobMatchPanel";
 import { CandidateProfilePanel } from "@/components/resume/CandidateProfilePanel";
 import { ResumeUploader } from "@/components/resume/ResumeUploader";
 import { SuggestionPanel } from "@/components/suggestions/SuggestionPanel";
-import { WorkflowStepper } from "@/components/workflow/WorkflowStepper";
+import { LoadingState } from "@/components/ui/LoadingState";
 import {
   generateSuggestions,
   parseCandidateProfile,
@@ -26,6 +26,7 @@ import type {
 } from "@/lib/types";
 
 export function CareerGraphWorkflow() {
+  const replaceInputId = useId();
   const [upload, setUpload] = useState<ResumeUploadResponse | null>(null);
   const [profile, setProfile] = useState<CandidateProfile | null>(null);
   const [directions, setDirections] = useState<CareerDirection[]>([]);
@@ -44,16 +45,21 @@ export function CareerGraphWorkflow() {
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
 
-  const currentStep = useMemo(() => {
-    if (matchResult) return 5;
-    if (suggestions) return 4;
-    if (directions.length) return 3;
-    if (profile) return 2;
-    return 1;
-  }, [directions.length, matchResult, profile, suggestions]);
+  const isAnalyzing = profileLoading || directionsLoading;
+  const analysisStatus = isAnalyzing
+    ? "Analyzing resume evidence"
+    : directions.length
+      ? "Directions ready"
+      : profile
+        ? "Profile ready"
+        : upload
+          ? "Resume prepared"
+          : "Ready for resume";
 
   async function handleUpload(file: File) {
     setUploadLoading(true);
+    setProfileLoading(false);
+    setDirectionsLoading(false);
     setUploadError(null);
     setUpload(null);
     setProfile(null);
@@ -75,32 +81,34 @@ export function CareerGraphWorkflow() {
     }
   }
 
-  async function handleParseProfile() {
+  async function handleAnalyzeResume() {
     if (!upload) return;
+    let stage: "profile" | "directions" = "profile";
     setProfileLoading(true);
     setProfileError(null);
-    try {
-      setProfile(await parseCandidateProfile(upload.extracted_text));
-    } catch (cause) {
-      setProfileError(messageFrom(cause));
-    } finally {
-      setProfileLoading(false);
-    }
-  }
-
-  async function handleDirections() {
-    if (!profile) return;
-    setDirectionsLoading(true);
+    setDirections([]);
+    setSelectedDirection(null);
+    setSuggestions(null);
     setDirectionsError(null);
+    setSuggestionsError(null);
     try {
-      const result = await recommendCareerDirections(profile);
+      const parsedProfile = await parseCandidateProfile(upload.extracted_text);
+      setProfile(parsedProfile);
+      setProfileLoading(false);
+
+      stage = "directions";
+      setDirectionsLoading(true);
+      const result = await recommendCareerDirections(parsedProfile);
       setDirections(result.directions);
       setSelectedDirection(result.directions[0] ?? null);
-      setSuggestions(null);
-      setSuggestionsError(null);
     } catch (cause) {
-      setDirectionsError(messageFrom(cause));
+      if (stage === "profile") {
+        setProfileError(messageFrom(cause));
+      } else {
+        setDirectionsError(messageFrom(cause));
+      }
     } finally {
+      setProfileLoading(false);
       setDirectionsLoading(false);
     }
   }
@@ -140,155 +148,174 @@ export function CareerGraphWorkflow() {
     }
   }
 
-  return (
-    <main className="workflow-page">
-      <section className="hero">
-        <div>
-          <span className="hero-kicker">
-            <span aria-hidden="true">✦</span> Evidence-grounded career intelligence
-          </span>
-          <h1>Turn your resume into a clearer career direction.</h1>
-          <p>
-            Upload once to uncover your strongest paths, improve your positioning,
-            and compare your evidence against a real job.
-          </p>
-        </div>
-        <div className="trust-card">
-          <span className="trust-icon" aria-hidden="true">✓</span>
-          <div>
-            <strong>Your facts stay in control</strong>
-            <p>No invented skills, metrics, or experience.</p>
+  if (!upload) {
+    return (
+      <main className="career-console career-console--empty">
+        <section className="console-intake">
+          <div className="console-intake__copy">
+            <span className="hero-kicker">AI career advisor workspace</span>
+            <h1>Turn a resume into a career direction brief.</h1>
+            <p>
+              Upload a PDF or DOCX resume, then CareerGraph prepares evidence-backed
+              profile signals, recommended directions, and advisor guidance.
+            </p>
           </div>
-        </div>
-      </section>
-
-      <WorkflowStepper currentStep={currentStep} />
-
-      <div className="workflow-grid">
-        <div className="workflow-controls">
           <ResumeUploader
             error={uploadError}
             isLoading={uploadLoading}
             onUpload={handleUpload}
             upload={upload}
           />
+        </section>
+      </main>
+    );
+  }
 
-          {upload ? (
-            <section className="card action-card">
-              <div>
-                <span className="eyebrow">Step 2</span>
-                <h2>Build your candidate profile</h2>
-                <p>Convert extracted resume text into structured, reviewable evidence.</p>
-              </div>
-              <button
-                className="button button--primary button--wide"
-                disabled={profileLoading}
-                onClick={handleParseProfile}
-                type="button"
-              >
-                {profileLoading ? "Parsing profile…" : profile ? "Rebuild profile" : "Parse candidate profile"}
-              </button>
-              <details className="disclosure">
-                <summary>View extracted resume text</summary>
-                <pre>{upload.extracted_text}</pre>
-              </details>
+  return (
+    <main className="career-console">
+      <header className="console-header">
+        <div>
+          <span className="hero-kicker">CareerGraph AI</span>
+          <h1>{profile?.basic_info.full_name || "Career direction workspace"}</h1>
+          <p>{uploadError ?? "Evidence-grounded career direction and resume guidance"}</p>
+        </div>
+        <div className="console-header__actions">
+          <div className="console-file-pill">
+            <span className="file-type-icon">{upload.file_type.toUpperCase()}</span>
+            <span>{upload.filename}</span>
+            <label className="file-replace-button" htmlFor={replaceInputId}>
+              Replace
+              <input
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                disabled={uploadLoading || isAnalyzing}
+                id={replaceInputId}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleUpload(file);
+                  event.target.value = "";
+                }}
+                type="file"
+              />
+            </label>
+          </div>
+          <span className="console-status">{analysisStatus}</span>
+          <button
+            className="button button--dark"
+            disabled={isAnalyzing || uploadLoading}
+            onClick={handleAnalyzeResume}
+            type="button"
+          >
+            {isAnalyzing ? "Analyzing..." : profile ? "Refresh analysis" : "Analyze resume"}
+          </button>
+        </div>
+      </header>
+
+      <section className="console-workbench">
+        <section className="console-main">
+          {directions.length || directionsLoading || directionsError ? (
+            <CareerDirectionCards
+              directions={directions}
+              error={directionsError}
+              isLoading={directionsLoading}
+              onSelect={(direction) => {
+                setSelectedDirection(direction);
+                setSuggestions(null);
+                setSuggestionsError(null);
+              }}
+              selected={selectedDirection}
+            />
+          ) : (
+            <section className="console-analysis-panel">
+              <span className="eyebrow">Career fit</span>
+              <h2>{isAnalyzing ? "Building your career direction brief" : "Ready to map career directions"}</h2>
+              <p>
+                CareerGraph builds an evidence profile first, then ranks realistic career
+                directions by fit, confidence, and readiness gaps.
+              </p>
+              {isAnalyzing ? (
+                <LoadingState
+                  compact
+                  label="Analyzing resume evidence..."
+                  stages={[
+                    "Building evidence profile.",
+                    "Comparing evidence against career paths.",
+                    "Preparing ranked direction hypotheses.",
+                  ]}
+                />
+              ) : (
+                <button
+                  className="button button--primary"
+                  onClick={handleAnalyzeResume}
+                  type="button"
+                >
+                  Analyze resume
+                </button>
+              )}
+              {profileError || directionsError ? (
+                <p className="upload-error" role="alert">{profileError ?? directionsError}</p>
+              ) : null}
             </section>
-          ) : null}
+          )}
+        </section>
 
-          {profile ? (
-            <section className="card action-card">
-              <div>
-                <span className="eyebrow">Step 3</span>
-                <h2>Discover career directions</h2>
-                <p>Rank realistic paths using your skills, work, projects, and education.</p>
-              </div>
-              <button
-                className="button button--primary button--wide"
-                disabled={directionsLoading}
-                onClick={handleDirections}
-                type="button"
-              >
-                {directionsLoading ? "Ranking directions…" : directions.length ? "Refresh directions" : "Recommend career directions"}
-              </button>
+        <aside className="console-inspector">
+          {profile || profileLoading || profileError ? (
+            <CandidateProfilePanel
+              compact
+              error={profileError}
+              isLoading={profileLoading}
+              profile={profile}
+            />
+          ) : (
+            <section className="inspector-empty">
+              <span className="eyebrow">Evidence profile</span>
+              <h2>Profile summary</h2>
+              <p>Analysis will surface skills, strengths, and resume evidence here.</p>
             </section>
-          ) : null}
+          )}
 
-          {selectedDirection ? (
-            <section className="card action-card action-card--accent">
-              <div>
-                <span className="eyebrow">Step 4</span>
-                <h2>Improve resume positioning</h2>
-                <p>
-                  Generate safe improvements, gap analysis, and next actions for{" "}
-                  <strong>{selectedDirection.direction}</strong>.
-                </p>
-              </div>
+          <section className="advisor-cta-card">
+            <span className="eyebrow">Advisor plan</span>
+            <h2>{selectedDirection ? "Selected direction guidance" : "Select a direction"}</h2>
+            <p>
+              {selectedDirection
+                ? `Prepare resume-ready improvements and next actions for ${selectedDirection.direction}.`
+                : "Recommended directions will unlock focused advisor guidance."}
+            </p>
+            {selectedDirection ? (
               <button
                 className="button button--dark button--wide"
                 disabled={suggestionsLoading}
                 onClick={handleSuggestions}
                 type="button"
               >
-                {suggestionsLoading ? "Generating advisor…" : suggestions ? "Refresh advisor" : "Generate positioning advisor"}
+                {suggestionsLoading ? "Preparing..." : suggestions ? "Refresh advisor" : "Prepare advisor"}
               </button>
-            </section>
-          ) : null}
-        </div>
-
-        <aside className="workflow-results">
-          {profile || profileLoading || profileError ? (
-            <CandidateProfilePanel
-              error={profileError}
-              isLoading={profileLoading}
-              profile={profile}
-            />
-          ) : (
-            <section className="card empty-state">
-              <span className="empty-illustration" aria-hidden="true">
-                <svg viewBox="0 0 80 80">
-                  <rect height="56" rx="8" width="44" x="18" y="12" />
-                  <path d="M29 29h22M29 39h22M29 49h14" />
-                  <circle cx="59" cy="58" r="12" />
-                  <path d="M59 52v12M53 58h12" />
-                </svg>
-              </span>
-              <h2>Your profile preview will appear here</h2>
-              <p>Upload a resume and parse it to see structured evidence, skills, and strengths.</p>
-            </section>
-          )}
+            ) : null}
+          </section>
         </aside>
-      </div>
+      </section>
 
-      {directions.length || directionsLoading || directionsError ? (
-        <CareerDirectionCards
-          directions={directions}
-          error={directionsError}
-          isLoading={directionsLoading}
-          onSelect={(direction) => {
-            setSelectedDirection(direction);
-            setSuggestions(null);
-            setSuggestionsError(null);
-          }}
-          selected={selectedDirection}
-        />
-      ) : null}
+      <section className="console-secondary">
+        {suggestions || suggestionsLoading || suggestionsError ? (
+          <SuggestionPanel
+            error={suggestionsError}
+            isLoading={suggestionsLoading}
+            result={suggestions}
+          />
+        ) : null}
 
-      {suggestions || suggestionsLoading || suggestionsError ? (
-        <SuggestionPanel
-          error={suggestionsError}
-          isLoading={suggestionsLoading}
-          result={suggestions}
-        />
-      ) : null}
-
-      <JobMatchPanel
-        disabled={!profile}
-        error={jobError}
-        isLoading={jobLoading}
-        jobProfile={jobProfile}
-        matchResult={matchResult}
-        onRunMatch={handleJobMatch}
-      />
+        {profile ? (
+          <JobMatchPanel
+            disabled={!profile}
+            error={jobError}
+            isLoading={jobLoading}
+            jobProfile={jobProfile}
+            matchResult={matchResult}
+            onRunMatch={handleJobMatch}
+          />
+        ) : null}
+      </section>
     </main>
   );
 }

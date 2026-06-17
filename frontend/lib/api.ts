@@ -9,11 +9,19 @@ import type {
 } from "@/lib/types";
 
 const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000"
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? defaultApiBaseUrl()
 ).replace(/\/$/, "");
 const API_V1_URL = API_BASE_URL.endsWith("/api/v1")
   ? API_BASE_URL
   : `${API_BASE_URL}/api/v1`;
+
+function defaultApiBaseUrl() {
+  if (typeof window === "undefined") return "http://127.0.0.1:8000";
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return `${window.location.protocol}//${window.location.hostname}:8000`;
+  }
+  return "http://127.0.0.1:8000";
+}
 
 export class APIError extends Error {
   constructor(

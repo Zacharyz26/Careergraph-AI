@@ -35,13 +35,25 @@ export function LoadingState({
       role="status"
     >
       <div className="loading-state__message">
-        <span className="spinner" aria-hidden="true" />
+        <span className="analysis-orb" aria-hidden="true">
+          <span />
+        </span>
         <span>
           <strong>{label}</strong>
           {activeStage ? <small>{activeStage}</small> : null}
           {detail ? <small>{detail}</small> : null}
         </span>
       </div>
+      {stages.length > 1 ? (
+        <div className="loading-stage-list" aria-hidden="true">
+          {stages.map((stage, index) => (
+            <span
+              className={index <= stageIndex ? "loading-stage loading-stage--active" : "loading-stage"}
+              key={stage}
+            />
+          ))}
+        </div>
+      ) : null}
       <span className="loading-progress" aria-hidden="true">
         <span />
       </span>

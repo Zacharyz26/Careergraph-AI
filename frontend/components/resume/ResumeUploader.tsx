@@ -37,14 +37,14 @@ export function ResumeUploader({
   }
 
   return (
-    <section className="card workflow-card">
+    <section className={`card workflow-card${upload ? " workflow-card--complete" : ""}`}>
       <div className="card-heading">
         <div>
-          <span className="eyebrow">Step 1</span>
-          <h2>Upload your resume</h2>
-          <p>PDF or DOCX, up to the limits configured by the API.</p>
+          <span className="eyebrow">Resume intake</span>
+          <h2>Start with your resume</h2>
+          <p>PDF or DOCX. CareerGraph reads the document as evidence, not as a source for invented claims.</p>
         </div>
-        {upload ? <span className="status-badge status-badge--success">Extracted</span> : null}
+        {upload ? <span className="status-badge status-badge--success">Ready</span> : null}
       </div>
 
       <label
@@ -75,10 +75,10 @@ export function ResumeUploader({
         </span>
         <strong>
           {isLoading
-            ? `Uploading ${pendingFilename ?? "resume"}…`
+            ? `Reading ${pendingFilename ?? "resume"}...`
             : "Drop your resume here"}
         </strong>
-        <span>{isLoading ? "Extracting text from your document" : "or click to browse your files"}</span>
+        <span>{isLoading ? "Extracting the text CareerGraph will analyze" : "or click to browse your files"}</span>
         <span className="file-types">PDF · DOCX</span>
         <input
           accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
