@@ -21,14 +21,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
           <div className="header-meta">
             <span className="live-dot" aria-hidden="true" />
-            Evidence-grounded advisor
+            CareerGraph AI
           </div>
         </div>
       </header>
       {children}
       <footer className="site-footer">
-        <p>CareerGraph AI · Career intelligence workspace</p>
-        <p>Your resume facts remain the source of truth.</p>
+        <p>CareerGraph AI</p>
       </footer>
     </>
   );

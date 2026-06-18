@@ -18,6 +18,7 @@ from app.schemas.suggestion import (
 from app.core.config import settings
 from app.services.advisor_planner import AdvisorPlanner
 from app.services.career_direction_service import CareerDirectionService
+from app.services.language_preferences import advisor_language_instruction
 from app.services.llm_service import LLMService, LLMServiceError, MissingAPIKeyError
 from app.services.matching_taxonomy import extract_concepts
 from app.services.user_facing_sanitizer import (
@@ -57,6 +58,10 @@ Safety rules:
 - If evidence is weak or ambiguous, use medium or high risk.
 - Distinguish changes that can be made now from gaps requiring future learning
   or project work.
+- Resume-ready rewrites should stay in the same language as the source resume
+  evidence unless the source text itself is already in the requested language.
+  Advisor explanations, summaries, gaps, and next actions should follow the
+  requested language preference.
 - requires_user_review must always be true.
 - should_add_to_resume must be false for gap disclosures and unsupported claims.
 - Keep suggestions specific and actionable.
@@ -206,7 +211,11 @@ class SuggestionService:
         advisor_planner: AdvisorPlanner | None = None,
     ) -> None:
         self.llm_service = llm_service or LLMService(
-            model=settings.openai_advisor_model or settings.openai_model
+            model=settings.openai_advisor_model or settings.openai_model,
+            timeout_seconds=(
+                settings.openai_advisor_timeout_seconds
+                or settings.openai_timeout_seconds
+            ),
         )
         self.evidence_service = evidence_service or CareerDirectionService()
         self.advisor_planner = advisor_planner or AdvisorPlanner()
@@ -220,15 +229,25 @@ class SuggestionService:
         )
         if not summary.all_evidence():
             gaps = self._unsupported_gaps(request)
-            return SuggestionResponse(
-                overall_summary=(
+            summary_text = (
+                "该档案需要更多具体的简历证据，才能生成有意义的定位建议。"
+                if request.preferred_language == "zh"
+                else (
                     "The profile needs more concrete resume evidence before "
                     "meaningful positioning advice can be generated."
-                ),
+                )
+            )
+            warning_text = (
+                "未生成可直接用于简历的表述。"
+                if request.preferred_language == "zh"
+                else "No resume-ready claims were generated."
+            )
+            return SuggestionResponse(
+                overall_summary=summary_text,
                 evidence_gaps=self._gap_items(gaps, request),
                 recommended_next_actions=self._next_actions(gaps, request),
                 missing_but_not_addable=gaps,
-                warnings=["No resume-ready claims were generated."],
+                warnings=[warning_text],
             )
 
         if not (
@@ -256,6 +275,7 @@ class SuggestionService:
         context = {
             "candidate_profile": request.candidate_profile.model_dump(),
             "suggestion_mode": request.suggestion_mode,
+            "preferred_language": request.preferred_language,
             "target_direction": request.target_direction,
             "advisor_plan": self.advisor_planner.plan(
                 summary,
@@ -275,6 +295,13 @@ class SuggestionService:
             "unsupported_gaps": self._unsupported_gaps(request),
         }
         return (
+            advisor_language_instruction(request.preferred_language)
+            + "\nFor this advisor response, write overall_summary, positioning "
+            "advice, gap explanations, and next actions according to the "
+            "language preference. Keep source_evidence_text in the source "
+            "resume language. Keep resume-ready suggested_text in the same "
+            "language as the original evidence text when rewriting resume "
+            "bullets.\n\n"
             "Candidate evidence summary:\n"
             + summary.model_dump_json(indent=2)
             + "\n\nSuggestion context:\n"
@@ -718,10 +745,18 @@ class SuggestionService:
         ] or evidence
         for item in prioritized_evidence[:3]:
             section = item.source_type
-            advice_text = (
-                f"Lead the {section} section with this target-relevant proof: "
-                f"{item.text}"
-            )
+            if request.preferred_language == "zh":
+                advice_text = f"优先在 {section} 部分突出这条与目标方向相关的证据：{item.text}"
+                reason_text = "这是当前最强的可用证据之一，可以在不添加未经证实信息的前提下用于支持选定方向。"
+            else:
+                advice_text = (
+                    f"Lead the {section} section with this target-relevant proof: "
+                    f"{item.text}"
+                )
+                reason_text = (
+                    "This is among the strongest available evidence for the "
+                    "selected direction and can be emphasized without adding claims."
+                )
             advice_text = sanitize_user_facing_text(advice_text)
             quality_score = self._quality_score_positioning_text(
                 section=section,
@@ -734,10 +769,7 @@ class SuggestionService:
                 PositioningAdviceItem(
                     target_section=section,
                     advice=advice_text,
-                    reason=(
-                        "This is among the strongest available evidence for the "
-                        "selected direction and can be emphasized without adding claims."
-                    ),
+                    reason=reason_text,
                     source_evidence_ids=[item.evidence_id],
                     source_evidence_text=[item.text],
                     related_requirement_or_direction=self._target_label(request),
@@ -747,11 +779,24 @@ class SuggestionService:
                 )
             )
         gaps = self._unsupported_gaps(request)
-        return SuggestionResponse(
-            overall_summary=(
+        summary_text = (
+            "已基于最强可用证据和当前目标差距，生成保守的职业定位建议。"
+            if request.preferred_language == "zh"
+            else (
                 "Generated conservative career-positioning advice from the "
                 "strongest available evidence and current target gaps."
-            ),
+            )
+        )
+        warning_text = (
+            "LLM 生成暂不可用；已返回保守的定位建议。"
+            if request.preferred_language == "zh"
+            else (
+                "LLM generation was unavailable; only conservative positioning "
+                "guidance was returned."
+            )
+        )
+        return SuggestionResponse(
+            overall_summary=summary_text,
             resume_ready_improvements=improvements[:3],
             positioning_advice=sorted(
                 positioning,
@@ -761,9 +806,7 @@ class SuggestionService:
             evidence_gaps=self._gap_items(gaps, request),
             recommended_next_actions=self._next_actions(gaps, request),
             missing_but_not_addable=gaps,
-            warnings=[
-                "LLM generation was unavailable; only conservative positioning guidance was returned."
-            ],
+            warnings=[warning_text],
         )
 
     def _target_label(self, request: SuggestionGenerateRequest) -> str | None:
@@ -801,21 +844,34 @@ class SuggestionService:
         request: SuggestionGenerateRequest,
     ) -> list[EvidenceGapItem]:
         target = self._target_label(request)
+        if request.preferred_language == "zh":
+            why_it_matters = (
+                f"这一信号与 {target} 的职业定位相关。"
+                if target
+                else "这一信号会让简历定位更可信、更完整。"
+            )
+            evidence_needed = (
+                "请先形成具体证明点，例如项目、岗位经历、证书、作品集产出、"
+                "可衡量结果或公开链接。"
+            )
+        else:
+            why_it_matters = (
+                f"This signal is relevant to {target} positioning."
+                if target
+                else "This would make the resume positioning more credible and complete."
+            )
+            evidence_needed = (
+                "Develop a concrete proof point first, such as a project, "
+                "role experience, credential, portfolio artifact, measured "
+                "result, or public link."
+            )
         return [
             EvidenceGapItem(
                 gap=sanitize_user_facing_text(gap),
                 category=self._gap_category(gap),
                 priority=self._gap_priority(gap, index),
-                why_it_matters=sanitize_user_facing_text(
-                    f"This signal is relevant to {target} positioning."
-                    if target
-                    else "This would make the resume positioning more credible and complete."
-                ),
-                evidence_needed=sanitize_user_facing_text(
-                    "Develop a concrete proof point first, such as a project, "
-                    "role experience, credential, portfolio artifact, measured "
-                    "result, or public link."
-                ),
+                why_it_matters=sanitize_user_facing_text(why_it_matters),
+                evidence_needed=sanitize_user_facing_text(evidence_needed),
                 related_requirement_or_direction=(
                     sanitize_user_facing_text(target) if target else None
                 ),
@@ -831,31 +887,77 @@ class SuggestionService:
         request: SuggestionGenerateRequest,
     ) -> list[RecommendedNextActionItem]:
         target = self._target_label(request)
-        return [
-            RecommendedNextActionItem(
-                action=sanitize_user_facing_text(self._action_for_gap(gap, target)),
-                rationale=sanitize_user_facing_text(
-                    "This gives you a stronger proof point to reference in future "
-                    "resume updates."
-                ),
-                target_gap=sanitize_user_facing_text(gap),
-                suggested_artifact=sanitize_user_facing_text(
-                    "A portfolio entry, case study, demo, credential, project "
-                    "write-up, or measured result from real work."
-                ),
-                priority=self._gap_priority(gap, index),
-                quality_score=self._quality_score_action(gap, target, index),
-                quality_level=self._quality_level(
-                    self._quality_score_action(gap, target, index)
-                ),
-                should_add_to_resume=False,
-                requires_user_review=True,
+        rationale = (
+            "这会为未来更新简历提供更强的可引用证据。"
+            if request.preferred_language == "zh"
+            else (
+                "This gives you a stronger proof point to reference in future "
+                "resume updates."
             )
-            for index, gap in enumerate(gaps[:6])
-        ]
+        )
+        suggested_artifact = (
+            "作品集条目、案例研究、演示、证书、项目复盘，或来自真实工作的可衡量结果。"
+            if request.preferred_language == "zh"
+            else (
+                "A portfolio entry, case study, demo, credential, project "
+                "write-up, or measured result from real work."
+            )
+        )
+        def build_action(gap: str) -> str:
+            return self._action_for_gap(gap, target, request.preferred_language)
 
-    def _action_for_gap(self, gap: str, target: str | None) -> str:
+        actions: list[RecommendedNextActionItem] = []
+        seen_keys: set[str] = set()
+        for index, gap in enumerate(gaps):
+            action = build_action(gap)
+            action_key = self._next_action_key(gap, action)
+            if not action_key or action_key in seen_keys:
+                continue
+            seen_keys.add(action_key)
+            quality_score = self._quality_score_action(
+                gap,
+                target,
+                index,
+                action,
+            )
+            actions.append(
+                RecommendedNextActionItem(
+                    action=sanitize_user_facing_text(action),
+                    rationale=sanitize_user_facing_text(rationale),
+                    target_gap=sanitize_user_facing_text(gap),
+                    suggested_artifact=sanitize_user_facing_text(
+                        suggested_artifact
+                    ),
+                    priority=self._gap_priority(gap, index),
+                    quality_score=quality_score,
+                    quality_level=self._quality_level(quality_score),
+                    should_add_to_resume=False,
+                    requires_user_review=True,
+                )
+            )
+            if len(actions) >= 6:
+                break
+        return actions
+
+    def _action_for_gap(
+        self,
+        gap: str,
+        target: str | None,
+        preferred_language: str = "en",
+    ) -> str:
         normalized = self._normalize(gap)
+        if preferred_language == "zh":
+            if any(token in normalized for token in {"link", "github", "portfolio", "demo"}):
+                return "为已有工作发布或补充真实的项目、作品集、GitHub 或演示链接。"
+            if any(token in normalized for token in {"deploy", "deployment", "cloud", "docker", "kubernetes", "api"}):
+                return "完成一个可部署的小项目，用来证明缺失的实现能力或生产环境信号。"
+            if any(token in normalized for token in {"metric", "impact", "result", "performance"}):
+                return "衡量已有项目或工作成果，并在加入影响力表述前记录方法。"
+            if any(token in normalized for token in {"certification", "credential"}):
+                return "先完成相关证书或资质，再决定是否写入简历。"
+            if target:
+                return f"创建一个能证明“{gap}”并服务于 {target} 的具体产出。"
+            return f"先为“{gap}”建立具体证据，再考虑写入简历。"
         if any(token in normalized for token in {"link", "github", "portfolio", "demo"}):
             return "Publish or attach a real project, portfolio, GitHub, or demo link for existing work."
         if any(token in normalized for token in {"deploy", "deployment", "cloud", "docker", "kubernetes", "api"}):
@@ -867,6 +969,39 @@ class SuggestionService:
         if target:
             return f"Create a concrete artifact that demonstrates '{gap}' for {target}."
         return f"Create concrete evidence for '{gap}' before adding it to the resume."
+
+    def _next_action_key(self, gap: str, action: str) -> str:
+        normalized_gap = self._normalize(gap)
+        normalized_action = self._normalize(action)
+        combined = f"{normalized_gap} {normalized_action}"
+        if any(
+            token in combined
+            for token in {
+                "deploy",
+                "deployment",
+                "cloud",
+                "docker",
+                "kubernetes",
+                "api",
+                "serving",
+                "production",
+                "service",
+            }
+        ):
+            return "implementation_or_delivery:deployment_api_service"
+        if any(
+            token in combined
+            for token in {"link", "github", "portfolio", "demo", "case study"}
+        ):
+            return "portfolio_or_proof:public_artifact"
+        if any(
+            token in combined
+            for token in {"metric", "metrics", "impact", "result", "performance"}
+        ):
+            return "impact_or_metrics:measured_result"
+        if any(token in combined for token in {"certification", "credential"}):
+            return "credential_or_education:credential"
+        return f"{self._gap_category(gap)}:{self._normalize(action)}"
 
     def _merge_gap_items(
         self,
@@ -897,15 +1032,26 @@ class SuggestionService:
     ) -> list[RecommendedNextActionItem]:
         known_gaps = {self._normalize(gap) for gap in gaps}
         seen = {self._normalize(item.action) for item in base}
+        seen_keys = {
+            self._next_action_key(item.target_gap or item.action, item.action)
+            for item in base
+        }
         result = list(base)
         for item in generated:
             normalized_action = self._normalize(item.action)
             normalized_gap = self._normalize(item.target_gap or "")
+            action_key = self._next_action_key(
+                item.target_gap or item.action,
+                item.action,
+            )
             if not normalized_action or normalized_action in seen:
+                continue
+            if action_key in seen_keys:
                 continue
             if normalized_gap and normalized_gap not in known_gaps:
                 continue
             seen.add(normalized_action)
+            seen_keys.add(action_key)
             quality_score = self._quality_score_action(
                 item.target_gap or item.action,
                 None,

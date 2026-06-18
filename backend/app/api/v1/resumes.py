@@ -19,6 +19,17 @@ document_parser = DocumentParser()
 resume_profile_service = ResumeProfileService()
 
 
+def profile_analysis_error_detail(preferred_language: str, error: Exception) -> str:
+    message = str(error)
+    if "taking longer" in message.casefold() or "timed out" in message.casefold():
+        if preferred_language == "zh":
+            return "分析时间较长，请稍后重试。"
+        return "The analysis is taking longer than expected. Please try again."
+    if preferred_language == "zh":
+        return "分析未能完成，请稍后重试。"
+    return "The analysis could not be completed. Please try again."
+
+
 @router.post(
     "/upload",
     response_model=ResumeUploadResponse,
@@ -57,21 +68,24 @@ async def parse_candidate_profile(
     payload: ResumeProfileParseRequest,
 ) -> ResumeProfileParseResponse:
     try:
-        profile = await resume_profile_service.build_profile(payload.extracted_text)
+        profile = await resume_profile_service.build_profile(
+            payload.extracted_text,
+            preferred_language=payload.preferred_language,
+        )
     except MissingAPIKeyError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
+            detail=profile_analysis_error_detail(payload.preferred_language, exc),
         ) from exc
     except LLMResponseError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
+            detail=profile_analysis_error_detail(payload.preferred_language, exc),
         ) from exc
     except LLMServiceError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            detail=profile_analysis_error_detail(payload.preferred_language, exc),
         ) from exc
 
     return ResumeProfileParseResponse.model_validate(profile)

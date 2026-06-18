@@ -1,8 +1,10 @@
 from app.core.config import settings
+from app.schemas.common import PreferredLanguage
 from app.schemas.career_direction import (
     CandidateEvidenceSummary,
     CareerDirectionProposalSet,
 )
+from app.services.language_preferences import advisor_language_instruction
 from app.services.llm_service import LLMService, LLMServiceError
 
 CAREER_DIRECTION_PROMPT = """
@@ -39,7 +41,11 @@ class CareerDirectionProposalService:
         enabled: bool = True,
     ) -> None:
         self.llm_service = llm_service or LLMService(
-            model=settings.openai_direction_model or settings.openai_model
+            model=settings.openai_direction_model or settings.openai_model,
+            timeout_seconds=(
+                settings.openai_direction_timeout_seconds
+                or settings.openai_timeout_seconds
+            ),
         )
         self.enabled = enabled
 
@@ -52,6 +58,7 @@ class CareerDirectionProposalService:
     async def propose(
         self,
         summary: CandidateEvidenceSummary,
+        preferred_language: PreferredLanguage = "en",
     ) -> CareerDirectionProposalSet | None:
         if not self.is_available:
             return None
@@ -59,6 +66,11 @@ class CareerDirectionProposalService:
             return await self.llm_service.generate_structured(
                 system_prompt=CAREER_DIRECTION_PROMPT,
                 user_prompt=(
+                    advisor_language_instruction(preferred_language)
+                    + "\nFor career directions, translate user-facing direction "
+                    "names, rationales, possible gaps, and example job titles "
+                    "according to the language preference when natural. Do not "
+                    "translate evidence_id values or controlled enum values.\n\n"
                     "Candidate evidence summary:\n"
                     + summary.model_dump_json(indent=2)
                 ),

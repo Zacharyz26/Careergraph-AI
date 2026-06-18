@@ -1,8 +1,10 @@
 import type {
+  AnalysisJobResponse,
   CandidateProfile,
   CareerDirectionResponse,
   JobProfile,
   MatchResult,
+  PreferredLanguage,
   ResumeUploadResponse,
   SuggestionRequest,
   SuggestionResponse,
@@ -69,17 +71,21 @@ export function uploadResume(file: File): Promise<ResumeUploadResponse> {
 
 export function parseCandidateProfile(
   extractedText: string,
+  preferredLanguage: PreferredLanguage = "en",
 ): Promise<CandidateProfile> {
   return postJSON<CandidateProfile>("/resumes/parse-profile", {
     extracted_text: extractedText,
+    preferred_language: preferredLanguage,
   });
 }
 
 export function recommendCareerDirections(
   candidateProfile: CandidateProfile,
+  preferredLanguage: PreferredLanguage = "en",
 ): Promise<CareerDirectionResponse> {
   return postJSON<CareerDirectionResponse>("/career-directions/recommend", {
     candidate_profile: candidateProfile,
+    preferred_language: preferredLanguage,
   });
 }
 
@@ -105,4 +111,24 @@ export function scoreJobMatch(
     candidate_profile: candidateProfile,
     job_profile: jobProfile,
   });
+}
+
+export function createAnalysisJob(
+  extractedText: string,
+  preferredLanguage: PreferredLanguage = "en",
+): Promise<AnalysisJobResponse> {
+  return postJSON<AnalysisJobResponse>("/analysis-jobs", {
+    extracted_text: extractedText,
+    preferred_language: preferredLanguage,
+  });
+}
+
+export function getAnalysisJob(jobId: string): Promise<AnalysisJobResponse> {
+  return apiRequest<AnalysisJobResponse>(`/analysis-jobs/${jobId}`, {
+    method: "GET",
+  });
+}
+
+export function retryAnalysisJob(jobId: string): Promise<AnalysisJobResponse> {
+  return postJSON<AnalysisJobResponse>(`/analysis-jobs/${jobId}/retry`, {});
 }

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 from app.schemas.candidate import CandidateProfile, RoleFamily, SeniorityLevel
+from app.schemas.common import PreferredLanguage
 from app.schemas.career_direction import (
     CandidateEvidenceSummary,
     CareerDirectionProposalSet,
@@ -118,12 +119,16 @@ class CareerDirectionService:
     async def recommend(
         self,
         candidate: CandidateProfile,
+        preferred_language: PreferredLanguage = "en",
     ) -> CareerDirectionResponse:
         summary = self.build_evidence_summary(candidate)
         if not summary.all_evidence():
             return CareerDirectionResponse()
 
-        proposals = await self.proposal_service.propose(summary)
+        proposals = await self.proposal_service.propose(
+            summary,
+            preferred_language=preferred_language,
+        )
         if proposals is not None:
             recommendations = self._validate_and_rank(
                 candidate,

@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from app.schemas.candidate import CandidateProfile, RoleFamily, SeniorityLevel
-from app.schemas.common import APIModel
+from app.schemas.common import APIModel, PreferredLanguage
 CareerEvidenceSource = Literal[
     "education",
     "skills",
@@ -22,6 +22,7 @@ ConfidenceLevel = Literal["High", "Medium", "Low"]
 
 class CareerDirectionRequest(APIModel):
     candidate_profile: CandidateProfile
+    preferred_language: PreferredLanguage = "en"
 
 
 class DirectionEvidence(APIModel):

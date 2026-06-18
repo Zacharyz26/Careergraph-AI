@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { formatCopy, type PreferredLanguage, uiCopy } from "@/lib/i18n";
 import type { ResumeUploadResponse } from "@/lib/types";
 
 type ResumeUploaderProps = {
@@ -9,6 +10,7 @@ type ResumeUploaderProps = {
   isLoading?: boolean;
   error?: string | null;
   onUpload: (file: File) => void | Promise<void>;
+  language?: PreferredLanguage;
 };
 
 export function ResumeUploader({
@@ -16,7 +18,9 @@ export function ResumeUploader({
   isLoading = false,
   error = null,
   onUpload,
+  language = "en",
 }: ResumeUploaderProps) {
+  const t = uiCopy[language];
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -27,7 +31,7 @@ export function ResumeUploader({
 
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (extension !== "pdf" && extension !== "docx") {
-      setValidationError("Choose a PDF or DOCX resume.");
+      setValidationError(t.chooseResumeFile);
       return;
     }
 
@@ -40,11 +44,11 @@ export function ResumeUploader({
     <section className={`card workflow-card${upload ? " workflow-card--complete" : ""}`}>
       <div className="card-heading">
         <div>
-          <span className="eyebrow">Resume intake</span>
-          <h2>Start with your resume</h2>
-          <p>PDF or DOCX. CareerGraph reads the document as evidence, not as a source for invented claims.</p>
+          <span className="eyebrow">{t.resumeIntake}</span>
+          <h2>{t.resumeIntakeTitle}</h2>
+          <p>{t.resumeIntakeBody}</p>
         </div>
-        {upload ? <span className="status-badge status-badge--success">Ready</span> : null}
+        {upload ? <span className="status-badge status-badge--success">{t.ready}</span> : null}
       </div>
 
       <label
@@ -75,10 +79,10 @@ export function ResumeUploader({
         </span>
         <strong>
           {isLoading
-            ? `Reading ${pendingFilename ?? "resume"}...`
-            : "Drop your resume here"}
+            ? formatCopy(t.readingResume, { filename: pendingFilename ?? "resume" })
+            : t.dropResume}
         </strong>
-        <span>{isLoading ? "Extracting the text CareerGraph will analyze" : "or click to browse your files"}</span>
+        <span>{isLoading ? t.extractingResume : t.browseFiles}</span>
         <span className="file-types">PDF · DOCX</span>
         <input
           accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -104,11 +108,17 @@ export function ResumeUploader({
           <div>
             <strong>{upload.filename}</strong>
             <p>
-              {upload.character_count.toLocaleString()} characters
-              {upload.page_count ? ` · ${upload.page_count} pages` : ""}
+              {formatCopy(t.characters, {
+                count: upload.character_count.toLocaleString(),
+              })}
+              {upload.page_count
+                ? ` · ${formatCopy(t.pages, {
+                    count: upload.page_count.toLocaleString(),
+                  })}`
+                : ""}
             </p>
           </div>
-          <span className="check-mark" aria-label="Upload complete">
+          <span className="check-mark" aria-label={t.uploadComplete}>
             ✓
           </span>
         </div>

@@ -26,6 +26,8 @@ export type SeniorityLevel =
   | "Leadership"
   | "Unknown";
 
+export type PreferredLanguage = "en" | "zh";
+
 export interface ResumeUploadResponse {
   filename: string;
   file_type: "pdf" | "docx";
@@ -298,4 +300,42 @@ export interface SuggestionRequest {
   job_profile?: JobProfile;
   match_result?: MatchResult;
   suggestion_mode: SuggestionMode;
+  preferred_language?: PreferredLanguage;
+}
+
+export type AnalysisJobStatus = "queued" | "running" | "succeeded" | "failed";
+export type AnalysisStepKey =
+  | "profile_parsing"
+  | "career_directions"
+  | "advisor_suggestions"
+  | "job_matching";
+export type AnalysisStepStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "skipped";
+
+export interface AnalysisStepState {
+  key: AnalysisStepKey;
+  label: string;
+  status: AnalysisStepStatus;
+  message?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface AnalysisJobResponse {
+  job_id: string;
+  status: AnalysisJobStatus;
+  current_step?: AnalysisStepKey;
+  steps: AnalysisStepState[];
+  preferred_language: PreferredLanguage;
+  error_message?: string;
+  profile?: CandidateProfile;
+  career_directions?: CareerDirectionResponse;
+  selected_direction?: CareerDirection;
+  suggestions?: SuggestionResponse;
+  created_at: string;
+  updated_at: string;
 }

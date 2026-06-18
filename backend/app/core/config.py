@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str | None = None
     openai_timeout_seconds: float = Field(default=60, gt=0)
+    openai_profile_timeout_seconds: float | None = Field(default=90, gt=0)
+    openai_direction_timeout_seconds: float | None = Field(default=90, gt=0)
+    openai_advisor_timeout_seconds: float | None = Field(default=90, gt=0)
     openai_max_retries: int = Field(default=1, ge=0, le=5)
     matching_enable_semantic: bool = True
     matching_enable_llm_judge: bool = False

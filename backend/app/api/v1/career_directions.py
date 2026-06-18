@@ -14,4 +14,7 @@ career_direction_service = CareerDirectionService()
 async def recommend_career_directions(
     payload: CareerDirectionRequest,
 ) -> CareerDirectionResponse:
-    return await career_direction_service.recommend(payload.candidate_profile)
+    return await career_direction_service.recommend(
+        payload.candidate_profile,
+        preferred_language=payload.preferred_language,
+    )

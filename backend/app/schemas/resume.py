@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import Field, field_validator
 
-from app.schemas.common import APIModel, ProcessingState
+from app.schemas.common import APIModel, PreferredLanguage, ProcessingState
 from app.schemas.candidate import CandidateProfile
 
 
@@ -45,6 +45,7 @@ class ResumeUploadResponse(APIModel):
 
 class ResumeProfileParseRequest(APIModel):
     extracted_text: str = Field(min_length=1, max_length=100_000)
+    preferred_language: PreferredLanguage = "en"
 
     @field_validator("extracted_text")
     @classmethod

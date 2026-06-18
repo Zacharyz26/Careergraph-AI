@@ -390,6 +390,88 @@ async def test_career_direction_mode_preserves_direction_context() -> None:
 
 
 @pytest.mark.asyncio
+async def test_base_next_actions_dedupe_deployment_api_cloud_gaps() -> None:
+    service = SuggestionService(llm_service=LLMService(api_key=""))
+    direction = career_direction().model_copy(
+        update={
+            "gaps_for_this_direction": [
+                "Cloud deployment evidence",
+                "API service deployment proof",
+                "Production serving evidence",
+            ]
+        }
+    )
+
+    result = await service.generate(
+        SuggestionGenerateRequest(
+            candidate_profile=candidate_profile(),
+            career_direction_result=direction,
+            suggestion_mode="career_direction",
+        )
+    )
+
+    deployment_actions = [
+        action
+        for action in result.recommended_next_actions
+        if service._next_action_key(
+            action.target_gap or action.action,
+            action.action,
+        )
+        == "implementation_or_delivery:deployment_api_service"
+    ]
+
+    assert len(deployment_actions) == 1
+
+
+@pytest.mark.asyncio
+async def test_generated_next_actions_dedupe_deployment_api_cloud_gaps() -> None:
+    response = SuggestionResponse(
+        overall_summary="Position for backend engineering.",
+        evidence_gaps=[
+            EvidenceGapItem(
+                gap="API service deployment proof",
+                why_it_matters="Deployment evidence supports backend roles.",
+                evidence_needed="A deployed API project.",
+                should_add_to_resume=False,
+                requires_user_review=True,
+            )
+        ],
+        recommended_next_actions=[
+            RecommendedNextActionItem(
+                action="Ship a small API service on a cloud host and document the result.",
+                rationale="This creates deployment proof.",
+                target_gap="API service deployment proof",
+                suggested_artifact="Deployment README.",
+                priority="high",
+                should_add_to_resume=False,
+                requires_user_review=True,
+            )
+        ],
+    )
+    service = mocked_service(response)
+
+    result = await service.generate(
+        SuggestionGenerateRequest(
+            candidate_profile=candidate_profile(),
+            career_direction_result=career_direction(),
+            suggestion_mode="career_direction",
+        )
+    )
+
+    deployment_actions = [
+        action
+        for action in result.recommended_next_actions
+        if service._next_action_key(
+            action.target_gap or action.action,
+            action.action,
+        )
+        == "implementation_or_delivery:deployment_api_service"
+    ]
+
+    assert len(deployment_actions) == 1
+
+
+@pytest.mark.asyncio
 async def test_advisor_keeps_positioning_gaps_and_next_actions_separate() -> None:
     candidate = candidate_profile()
     bootstrap = SuggestionService(llm_service=LLMService(api_key=""))

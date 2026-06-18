@@ -4,6 +4,13 @@ import { useState } from "react";
 
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingState } from "@/components/ui/LoadingState";
+import {
+  formatCopy,
+  matchRecommendationLabels,
+  matchStatusLabels,
+  type PreferredLanguage,
+  uiCopy,
+} from "@/lib/i18n";
 import type { JobProfile, MatchResult } from "@/lib/types";
 
 type JobMatchPanelProps = {
@@ -13,6 +20,7 @@ type JobMatchPanelProps = {
   isLoading: boolean;
   error: string | null;
   onRunMatch: (description: string) => void;
+  language?: PreferredLanguage;
 };
 
 export function JobMatchPanel({
@@ -22,7 +30,9 @@ export function JobMatchPanel({
   isLoading,
   error,
   onRunMatch,
+  language = "en",
 }: JobMatchPanelProps) {
+  const t = uiCopy[language];
   const [description, setDescription] = useState("");
 
   return (
@@ -30,51 +40,51 @@ export function JobMatchPanel({
       <details className="job-match-disclosure" open={Boolean(matchResult || error || isLoading)}>
         <summary>
           <span>
-            <span className="eyebrow">Optional job fit</span>
-            <strong>Compare against a specific role</strong>
+            <span className="eyebrow">{t.optionalJobFit}</span>
+            <strong>{t.compareRole}</strong>
           </span>
-          <span className="optional-badge">Optional</span>
+          <span className="optional-badge">{t.optional}</span>
         </summary>
 
         <div className="job-match-body">
-          <p className="inline-note">Paste a job description to see evidence coverage and gaps for that role.</p>
+          <p className="inline-note">{t.jobFitBody}</p>
           <label className="field-label" htmlFor="job-description">
-            Job description
+            {t.jobDescription}
           </label>
           <textarea
             disabled={disabled || isLoading}
             id="job-description"
             onChange={(event) => setDescription(event.target.value)}
-            placeholder="Paste the full job description here..."
+            placeholder={t.jobPlaceholder}
             rows={7}
             value={description}
           />
           <div className="field-footer">
-            <span>{description.length.toLocaleString()} characters</span>
+            <span>
+              {formatCopy(t.characters, {
+                count: description.length.toLocaleString(),
+              })}
+            </span>
             <button
               className="button button--primary"
               disabled={disabled || isLoading || description.trim().length < 20}
               onClick={() => onRunMatch(description.trim())}
               type="button"
             >
-              {isLoading ? "Checking role fit..." : "Check role fit"}
+              {isLoading ? t.checkingRoleFit : t.checkRoleFit}
             </button>
           </div>
 
           {disabled ? (
-            <p className="inline-note">Build the evidence profile before checking a specific job.</p>
+            <p className="inline-note">{t.buildProfileFirst}</p>
           ) : null}
-          {error ? <ErrorMessage message={error} /> : null}
+          {error ? <ErrorMessage message={error} title={t.errorTitle} /> : null}
           {isLoading ? (
             <LoadingState
               compact={matchResult !== null}
-              detail="This may take up to 60 seconds. Any previous match remains visible below."
-              label="Checking evidence coverage for this role..."
-              stages={[
-                "Reading required skills, responsibilities, and qualifications.",
-                "Matching role requirements to resume evidence.",
-                "Preparing a coverage score and gap explanation.",
-              ]}
+              detail={t.jobLoadingDetail}
+              label={t.jobLoadingLabel}
+              stages={[...t.jobLoadingStages]}
             />
           ) : null}
 
@@ -86,22 +96,22 @@ export function JobMatchPanel({
                   <span>/ 100</span>
                 </div>
                 <div>
-                  <span className="eyebrow">{jobProfile?.job_title || "Parsed job"}</span>
-                  <h3>{matchResult.recommendation}</h3>
+                  <span className="eyebrow">{jobProfile?.job_title || t.parsedJob}</span>
+                  <h3>{matchRecommendationLabels[language][matchResult.recommendation]}</h3>
                   <p>{matchResult.explanation}</p>
                 </div>
               </div>
 
               <div className="score-breakdown">
-                <ScoreBar label="Required coverage" value={matchResult.required_coverage_score} />
-                <ScoreBar label="Responsibilities" value={matchResult.responsibility_alignment_score} />
-                <ScoreBar label="Education fit" value={matchResult.education_fit_score} />
-                <ScoreBar label="Evidence strength" value={matchResult.evidence_strength_score} />
+                <ScoreBar label={t.requiredCoverage} value={matchResult.required_coverage_score} />
+                <ScoreBar label={t.responsibilities} value={matchResult.responsibility_alignment_score} />
+                <ScoreBar label={t.educationFit} value={matchResult.education_fit_score} />
+                <ScoreBar label={t.evidenceStrength} value={matchResult.evidence_strength_score} />
               </div>
 
               <div className="match-columns">
                 <div>
-                  <h4>Matched requirements</h4>
+                  <h4>{t.matchedRequirements}</h4>
                   <div className="tag-list">
                     {[...matchResult.matched_required_skills, ...matchResult.matched_preferred_skills].map(
                       (skill) => <span className="tag tag--success" key={skill}>{skill}</span>,
@@ -109,7 +119,7 @@ export function JobMatchPanel({
                   </div>
                 </div>
                 <div>
-                  <h4>Missing evidence</h4>
+                  <h4>{t.missingEvidence}</h4>
                   <div className="tag-list">
                     {[...matchResult.missing_required_skills, ...matchResult.missing_preferred_skills].map(
                       (skill) => <span className="tag tag--warning" key={skill}>{skill}</span>,
@@ -119,12 +129,12 @@ export function JobMatchPanel({
               </div>
 
               <details className="disclosure">
-                <summary>View requirement-level analysis</summary>
+                <summary>{t.viewRequirementAnalysis}</summary>
                 <div className="requirement-list">
                   {matchResult.requirement_matches.map((item, index) => (
                     <div className="requirement-row" key={`${item.requirement}-${index}`}>
                       <span className={`match-status match-status--${item.match_status}`}>
-                        {item.match_status.replaceAll("_", " ")}
+                        {matchStatusLabels[language][item.match_status]}
                       </span>
                       <div>
                         <strong>{item.requirement}</strong>

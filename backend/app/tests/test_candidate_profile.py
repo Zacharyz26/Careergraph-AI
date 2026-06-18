@@ -192,8 +192,10 @@ def test_llm_service_reports_timeout_without_exposing_api_key() -> None:
 
     detail = service._public_provider_error(error)
 
-    assert "timed out after 60 seconds" in detail
+    assert detail == "The analysis is taking longer than expected. Please try again."
     assert "sk-secret" not in detail
+    assert "OPENAI_TIMEOUT_SECONDS" not in detail
+    assert "APITimeoutError" not in detail
 
 
 @pytest.mark.parametrize(
@@ -208,7 +210,7 @@ def test_llm_service_reports_timeout_without_exposing_api_key() -> None:
                 ),
                 body=None,
             ),
-            "Check OPENAI_API_KEY",
+            "temporarily unavailable",
         ),
         (
             RateLimitError(
@@ -219,7 +221,7 @@ def test_llm_service_reports_timeout_without_exposing_api_key() -> None:
                 ),
                 body=None,
             ),
-            "usage and billing",
+            "busy",
         ),
     ],
 )

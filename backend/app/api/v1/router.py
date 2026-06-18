@@ -1,8 +1,20 @@
 from fastapi import APIRouter
 
-from app.api.v1 import career_directions, jobs, matches, resumes, suggestions
+from app.api.v1 import (
+    analysis_jobs,
+    career_directions,
+    jobs,
+    matches,
+    resumes,
+    suggestions,
+)
 
 api_router = APIRouter()
+api_router.include_router(
+    analysis_jobs.router,
+    prefix="/analysis-jobs",
+    tags=["analysis-jobs"],
+)
 api_router.include_router(
     career_directions.router,
     prefix="/career-directions",

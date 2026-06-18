@@ -7,7 +7,7 @@ from pydantic import Field, model_validator
 
 from app.schemas.candidate import CandidateProfile
 from app.schemas.career_direction import CareerDirectionRecommendation
-from app.schemas.common import APIModel
+from app.schemas.common import APIModel, PreferredLanguage
 from app.schemas.job import JobProfile
 from app.schemas.match import MatchResult
 
@@ -62,6 +62,7 @@ class SuggestionGenerateRequest(APIModel):
     job_profile: JobProfile | None = None
     match_result: MatchResult | None = None
     suggestion_mode: SuggestionMode = "general"
+    preferred_language: PreferredLanguage = "en"
 
     @model_validator(mode="after")
     def validate_mode_context(self) -> "SuggestionGenerateRequest":

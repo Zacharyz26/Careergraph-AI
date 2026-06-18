@@ -6,7 +6,7 @@ from docx import Document
 
 from app.main import app
 from app.schemas.candidate import CandidateProfile, InferredTargetRole
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, LLMServiceError
 from app.services.resume_profile_service import ResumeProfileService
 
 
@@ -155,4 +155,45 @@ async def test_parse_profile_reports_missing_api_key(monkeypatch) -> None:
         )
 
     assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]
+    assert response.json()["detail"] == (
+        "The analysis could not be completed. Please try again."
+    )
+    assert "OPENAI_API_KEY" not in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_parse_profile_localizes_timeout_errors(monkeypatch) -> None:
+    from app.api.v1 import resumes
+
+    class TimeoutProfileService:
+        async def build_profile(
+            self,
+            extracted_text: str,
+            preferred_language: str = "en",
+        ) -> CandidateProfile:
+            raise LLMServiceError(
+                "The analysis is taking longer than expected. Please try again."
+            )
+
+    monkeypatch.setattr(
+        resumes,
+        "resume_profile_service",
+        TimeoutProfileService(),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/api/v1/resumes/parse-profile",
+            json={
+                "extracted_text": "Python backend engineer",
+                "preferred_language": "zh",
+            },
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "分析时间较长，请稍后重试。"
+    assert "APITimeoutError" not in response.json()["detail"]
+    assert "OPENAI_TIMEOUT_SECONDS" not in response.json()["detail"]

@@ -1,6 +1,8 @@
 from app.core.config import settings
+from app.schemas.common import PreferredLanguage
 from app.schemas.candidate import CandidateProfile
 from app.schemas.resume import ResumeBlock, VerifiedFact
+from app.services.language_preferences import advisor_language_instruction
 from app.services.llm_service import LLMService
 
 LAYOUT_ONLY_TERMS = (
@@ -73,14 +75,27 @@ Grounding rules:
 class ResumeProfileService:
     def __init__(self, llm_service: LLMService | None = None) -> None:
         self.llm_service = llm_service or LLMService(
-            model=settings.openai_profile_model or settings.openai_model
+            model=settings.openai_profile_model or settings.openai_model,
+            timeout_seconds=(
+                settings.openai_profile_timeout_seconds
+                or settings.openai_timeout_seconds
+            ),
         )
 
-    async def build_profile(self, extracted_text: str) -> CandidateProfile:
+    async def build_profile(
+        self,
+        extracted_text: str,
+        preferred_language: PreferredLanguage = "en",
+    ) -> CandidateProfile:
         profile = await self.llm_service.generate_structured(
             system_prompt=PROFILE_SYSTEM_PROMPT,
             user_prompt=(
                 "Extract the CandidateProfile from the resume text below.\n\n"
+                f"{advisor_language_instruction(preferred_language)}\n"
+                "For this profile extraction, preserve evidence excerpts and "
+                "resume facts in the source resume language. User-facing "
+                "rationales, strengths, improvement areas, and inferred-role "
+                "rationales may follow the language preference.\n\n"
                 "<resume_text>\n"
                 f"{extracted_text}\n"
                 "</resume_text>"
