@@ -1,5 +1,10 @@
 **CareerGraph AI**
 
+> Current status note: this is a historical product planning document. It
+> includes future product ideas such as persistence, resume versions, roadmap
+> generation, and export. For the current implemented MVP, see the root
+> `README.md`, `docs/architecture.md`, and `docs/api_design.md`.
+
 **AI 简历画像、岗位匹配与求职材料优化 Web App 项目计划书**\
 日期：2026 年 6 月 7 日\
 作者：Zhuoer Zhang

@@ -1,5 +1,11 @@
 # Data Model
 
+This document describes the intended durable product data model. The current
+MVP does not yet persist these entities in the main workflow. Resume uploads,
+profiles, career directions, suggestions, and job matches are currently handled
+as stateless API payloads, with analysis jobs stored only in backend process
+memory.
+
 ## Core Entities
 
 - `User`: account identity and ownership boundary.

@@ -1,8 +1,37 @@
 # CareerGraph AI Backend
 
-FastAPI service for resume ingestion, candidate profiles, verified facts, job
-description parsing, hybrid matching, and human-reviewed improvement
-suggestions.
+FastAPI backend for CareerGraph AI's stateless MVP: resume text extraction,
+structured candidate profiles, evidence-supported career directions,
+advisor-style resume guidance, optional job parsing, and resume-to-job match
+scoring.
+
+## Current Backend Scope
+
+Implemented:
+
+- PDF/DOCX text extraction through `POST /api/v1/resumes/upload`.
+- Async in-memory analysis jobs through `/api/v1/analysis-jobs`.
+- Structured `CandidateProfile` parsing with OpenAI structured output.
+- Evidence-supported career direction recommendations.
+- Evidence-grounded advisor guidance and resume-safe improvements.
+- Optional pasted job description parsing.
+- Hybrid deterministic resume-to-job match scoring.
+- English and Simplified Chinese language preference support.
+- Friendly user-facing errors with detailed technical errors kept in backend
+  logs.
+- Deterministic fallbacks for direction/advisor behavior where appropriate.
+
+Not implemented yet:
+
+- Authentication or user ownership.
+- Database-backed persistence for workflow data.
+- Durable background workers or Redis job queues.
+- Resume export or version management.
+- Auto-apply, scraping, browser automation, payments, or saved job boards.
+
+The in-memory analysis job registry is intentionally lightweight. It prevents
+long browser requests in local use, but jobs are lost when the backend process
+restarts.
 
 ## Setup
 
@@ -10,315 +39,183 @@ suggestions.
 ./scripts/setup_backend.sh
 cd backend
 source .venv/bin/activate
+cp .env.example .env
 ```
 
-Add secrets or local overrides to `backend/.env`, then run:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-The API is available at `http://localhost:8000`, with development docs at
-`http://localhost:8000/docs`.
-
-## Resume text extraction
-
-`POST /api/v1/resumes/upload` accepts one multipart `file` field containing a
-PDF or DOCX resume. It extracts text without storing the file or calling an LLM.
-
-```bash
-curl -X POST \
-  http://localhost:8000/api/v1/resumes/upload \
-  -H "accept: application/json" \
-  -F "file=@/absolute/path/to/resume.pdf"
-```
-
-The response contains the sanitized filename, file type, extracted text,
-character count, and PDF page count when applicable.
-
-## Candidate profile parsing
-
-Set the API key and optional model in `backend/.env`:
+Set:
 
 ```dotenv
 OPENAI_API_KEY=your_api_key
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-`POST /api/v1/resumes/parse-profile` converts previously extracted resume text
-into a schema-validated candidate profile. It uses structured output and
-instructs the model to return null or empty collections rather than inventing
-missing facts. This endpoint performs **content intelligence only**: it analyzes
-the words present in the extracted text, including experience, education,
-skills, projects, patents, strengths, and content gaps.
-
-It does not evaluate fonts, spacing, templates, columns, visual hierarchy, page
-layout, or ATS layout. A future **Resume Layout Analyzer** endpoint will inspect
-the original PDF/DOCX file and parser layout metadata for layout, template, and
-ATS presentation intelligence.
-
-Target role inference is generic and evidence-based rather than hardcoded for a
-particular candidate or industry. It returns 3 to 6 supported roles with role
-family, conservative seniority, confidence, rationale, and source evidence.
-Vague resumes receive broader, lower-confidence role suggestions.
-
-`role_family` and `seniority_level` use controlled taxonomies. Seniority values
-are `Internship`, `Entry-level`, `Junior`, `Mid-level`, `Senior`, `Leadership`,
-or `Unknown`. Current students, recent graduates, and internship-heavy resumes
-prefer `Internship` or `Entry-level` when the resume supports that classification.
+Run:
 
 ```bash
-curl -X POST \
-  http://localhost:8000/api/v1/resumes/parse-profile \
-  -H "Content-Type: application/json" \
-  -d '{
-    "extracted_text": "Jordan Lee\nBackend Engineer\nPython, FastAPI, PostgreSQL"
-  }'
+uvicorn app.main:app --reload
 ```
 
-If `OPENAI_API_KEY` is not configured, the endpoint returns HTTP 503 with a
-configuration error. Tests inject a structured mock response and never require
-an API key or network access.
+API:
 
-## Job description parsing
+- Base URL: `http://localhost:8000`
+- Health: `http://localhost:8000/health`
+- Swagger docs: `http://localhost:8000/docs`
 
-`POST /api/v1/jobs/parse` converts a pasted job description into a structured
-`JobProfile`. It separates required and preferred skills, responsibilities and
-qualifications, and uses the same controlled role-family and seniority
-taxonomies as CandidateProfile parsing.
+## Environment Variables
 
-Company name, salary, visa sponsorship, location, and remote policy are returned
-only when explicitly supported by the job description. Missing facts remain
-null, empty, or `Unknown`; evidence excerpts accompany extracted requirements.
-
-```bash
-curl -X POST \
-  http://localhost:8000/api/v1/jobs/parse \
-  -H "Content-Type: application/json" \
-  -d '{
-    "raw_job_description": "Example Company is hiring a full-time Data Analyst in Toronto. Required: SQL and dashboard development. Python is preferred. This is a hybrid role."
-  }'
-```
-
-## Resume-to-job match scoring
-
-`POST /api/v1/matches/score` compares a structured `CandidateProfile` and
-`JobProfile` using a hybrid, requirement-centric scoring engine. The engine,
-not an LLM, always computes the final score, and no result is persisted.
-
-The matcher:
-
-1. Builds an evidence index from candidate skills, experience bullets, projects,
-   papers, patents, education, certifications, and languages.
-2. Builds individual job requirements from required and preferred skills,
-   responsibilities, qualifications, education, and experience requirements.
-3. Applies deterministic exact, token, and taxonomy matching.
-4. When configured, batches requirement and evidence embeddings to recover
-   semantic paraphrases missed by keyword matching.
-5. Optionally sends only ambiguous requirement/evidence pairs to a structured
-   LLM evidence judge. The judge cannot add evidence or assign the final score.
-6. Evaluates each requirement as `full_match`, `partial_match`,
-   `transferable_match`, or `missing`.
-7. Aggregates required coverage, preferred coverage, responsibility alignment,
-   education fit, seniority fit, and evidence strength.
-8. Applies explicit penalties for unsupported mandatory requirements.
-
-Semantic matching uses `OPENAI_EMBEDDING_MODEL` when `OPENAI_API_KEY` is
-configured. If embeddings fail or no key is available, scoring automatically
-falls back to the deterministic engine. `MATCHING_ENABLE_LLM_JUDGE` defaults to
-`false`; enabling it only affects ambiguous requirement-level decisions.
-
-Its lightweight concept taxonomy covers software, AI/ML, data, finance,
-accounting, marketing, product, design, operations, healthcare, research,
-education, sales, HR, and legal/compliance concepts. Taxonomy relationships can
-connect supported wording, but never create a match without candidate evidence.
-Work, project, paper, and patent evidence is weighted more strongly than a
-standalone skill label or education evidence.
-
-```bash
-curl -X POST \
-  http://localhost:8000/api/v1/matches/score \
-  -H "Content-Type: application/json" \
-  -d '{
-    "candidate_profile": {
-      "skills": [{"category": "Programming", "skills": ["Python", "SQL"], "evidence": ["Python, SQL"]}],
-      "experience": [{"organization": "Example Labs", "title": "Backend Intern", "bullets": ["Built REST APIs with Python"], "evidence": ["Built REST APIs with Python"]}],
-      "projects": [],
-      "papers": [],
-      "patents": [],
-      "education": [{"institution": "Example University", "degree": "BS", "field_of_study": "Computer Science", "evidence": ["BS in Computer Science"]}],
-      "inferred_target_roles": [
-        {"role": "Backend Engineer", "role_family": "Software Engineering", "seniority_level": "Internship", "confidence": 0.9, "rationale": "API internship evidence.", "is_inferred": true, "evidence": ["Backend Intern"]},
-        {"role": "Software Engineer", "role_family": "Software Engineering", "seniority_level": "Entry-level", "confidence": 0.8, "rationale": "Python software evidence.", "is_inferred": true, "evidence": ["Built REST APIs with Python"]},
-        {"role": "Data Analyst", "role_family": "Data / Analytics", "seniority_level": "Entry-level", "confidence": 0.6, "rationale": "SQL evidence.", "is_inferred": true, "evidence": ["Python, SQL"]}
-      ]
-    },
-    "job_profile": {
-      "job_title": "Backend Engineering Intern",
-      "role_family": "Software Engineering",
-      "seniority_level": "Internship",
-      "employment_type": "Internship",
-      "required_skills": [{"value": "Python", "evidence": ["Required: Python"]}],
-      "preferred_skills": [{"value": "SQL", "evidence": ["SQL preferred"]}],
-      "responsibilities": [{"value": "Build REST APIs", "evidence": ["Build REST APIs"]}],
-      "qualifications": [],
-      "education_requirements": [{"value": "Computer Science", "evidence": ["Computer Science degree"]}]
-    }
-  }'
-```
-
-The response includes one decision per requirement, attached candidate evidence,
-coverage and evidence scores, risk penalties, matched and missing skills,
-transferable matches, an explanation, and a recommendation label.
-
-Example requirement decision:
-
-```json
-{
-  "requirement_type": "required_skill",
-  "importance": 1.0,
-  "requirement": "Marketing analytics",
-  "match_status": "transferable_match",
-  "match_strength": 0.28,
-  "confidence": 0.58,
-  "similarity_score": 0.71,
-  "evaluation_method": "semantic",
-  "candidate_evidence": [
-    {
-      "source_type": "skills",
-      "text": "Performed data analysis for sales reporting",
-      "evidence_strength": 0.7,
-      "normalized_concepts": ["data_analysis"]
-    }
-  ],
-  "reason": "Candidate evidence is related and potentially transferable, but does not directly satisfy the requirement."
-}
-```
-
-## Career direction recommendations
-
-`POST /api/v1/career-directions/recommend` ranks up to five evidence-supported
-career directions from a `CandidateProfile`.
-
-The recommender uses an evidence-controlled hybrid pipeline:
-
-1. Build an evidence summary with stable IDs for education, skills, work,
-   projects, papers, patents, certifications, leadership, and languages.
-2. When configured, ask the LLM for 8 to 12 structured candidate directions.
-   Every proposal must cite evidence IDs from that summary.
-3. Remove unknown IDs and directions with no valid evidence.
-4. Downgrade primary directions supported only by isolated skill tokens.
-5. Require strong work, project, paper, or patent evidence for a primary fit.
-6. Suppress generic internship suggestions when specialized directions have
-   meaningful support.
-7. Deterministically rank the validated proposals using evidence strength,
-   evidence diversity, directness, role-family consistency, seniority fit, and
-   gap severity.
-
-The LLM proposes candidates but does not choose the final Top 5 or assign final
-scores. Inferred target roles are supporting signals only. If `OPENAI_API_KEY`
-is absent or proposal generation fails, the service uses the deterministic
-cross-domain catalog fallback.
+Common settings:
 
 ```dotenv
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_PROFILE_MODEL=
+OPENAI_DIRECTION_MODEL=
+OPENAI_ADVISOR_MODEL=
+OPENAI_JUDGE_MODEL=
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_BASE_URL=
+OPENAI_TIMEOUT_SECONDS=60
+OPENAI_PROFILE_TIMEOUT_SECONDS=90
+OPENAI_DIRECTION_TIMEOUT_SECONDS=90
+OPENAI_ADVISOR_TIMEOUT_SECONDS=90
+OPENAI_MAX_RETRIES=1
+MATCHING_ENABLE_SEMANTIC=true
+MATCHING_ENABLE_LLM_JUDGE=false
 CAREER_DIRECTIONS_ENABLE_LLM=true
+ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
-Standalone skills are intentionally weak evidence. Work experience and
-projects/papers/patents carry more weight. Sparse profiles return fewer
-recommendations with wider score ranges and lower confidence.
+`OPENAI_PROFILE_MODEL`, `OPENAI_DIRECTION_MODEL`, and `OPENAI_ADVISOR_MODEL`
+are optional task-specific overrides. Blank values fall back to `OPENAI_MODEL`.
 
-```bash
-curl -X POST \
-  http://localhost:8000/api/v1/career-directions/recommend \
-  -H "Content-Type: application/json" \
-  -d '{
-    "candidate_profile": {
-      "skills": [{"category": "Finance", "skills": ["Financial modeling", "Excel", "Budgeting"], "evidence": ["Financial modeling, Excel, budgeting"]}],
-      "experience": [{"organization": "Example Finance", "title": "Finance Intern", "bullets": ["Built financial forecasts"], "evidence": ["Built financial forecasts"]}],
-      "inferred_target_roles": [
-        {"role": "Financial Analyst", "role_family": "Finance / Accounting", "seniority_level": "Entry-level", "confidence": 0.9, "rationale": "Finance evidence.", "is_inferred": true, "evidence": ["Built financial forecasts"]},
-        {"role": "Accounting Analyst", "role_family": "Finance / Accounting", "seniority_level": "Entry-level", "confidence": 0.8, "rationale": "Finance evidence.", "is_inferred": true, "evidence": ["Financial modeling"]},
-        {"role": "Business Analyst", "role_family": "Business / Operations", "seniority_level": "Entry-level", "confidence": 0.6, "rationale": "Analytical evidence.", "is_inferred": true, "evidence": ["Excel"]}
-      ]
-    }
-  }'
-```
+The database and Redis URLs are present for future durable persistence and worker
+workflows. Current product workflows do not require the app to read from or
+write to PostgreSQL or Redis.
 
-Each result includes rank, fit type, score range, confidence, matched evidence,
-direction-specific strengths and gaps, positioning advice, and example titles.
-Each matched evidence object includes the original `evidence_id`, allowing every
-recommendation to be traced back to the submitted CandidateProfile.
+## Main Workflow API
 
-## Resume improvement suggestions
+### Upload Resume
 
-`POST /api/v1/suggestions/generate` produces evidence-grounded resume content
-suggestions in three modes:
+`POST /api/v1/resumes/upload`
 
-- `general`: improve clarity and emphasis using only the candidate profile.
-- `career_direction`: position supported evidence for a target direction or a
-  `CareerDirectionRecommendation`.
-- `job_specific`: use a `JobProfile` and `MatchResult` to emphasize matched
-  evidence while keeping missing requirements out of resume-ready text.
+Accepts a multipart `file` field containing a PDF or DOCX resume. The backend
+extracts text and returns:
 
-The service builds the same stable candidate evidence summary used by career
-direction recommendations. When an API key is configured, structured LLM output
-may propose wording and organization changes. The service then validates every
-source ID, removes unsupported metrics, links, certifications, concepts, and
-job requirements, and raises the risk level for weak evidence. The LLM cannot
-add candidate facts. Missing skills and other unsupported gaps are returned in
-`missing_but_not_addable`.
+- sanitized filename
+- file type
+- extracted text
+- character count
+- PDF page count when available
 
-If `OPENAI_API_KEY` is absent or generation fails, the endpoint returns a
-deterministic fallback that only emphasizes existing evidence verbatim. Every
-suggestion requires user review.
+This endpoint does not call an LLM and does not store the file.
 
-General request:
+### Create Analysis Job
 
-```bash
-curl -X POST \
-  http://localhost:8000/api/v1/suggestions/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "suggestion_mode": "general",
-    "candidate_profile": {
-      "skills": [{"category": "Backend", "skills": ["Python", "FastAPI"], "evidence": ["Python and FastAPI"]}],
-      "experience": [{"organization": "Example Co", "title": "Software Intern", "bullets": ["Built REST APIs with Python"], "evidence": ["Built REST APIs with Python"]}],
-      "inferred_target_roles": []
-    }
-  }'
-```
-
-For job-specific generation, set `suggestion_mode` to `job_specific` and include
-the complete `job_profile` and `match_result` returned by the existing parsing
-and scoring endpoints. Supplying complete job or career-direction context also
-selects the corresponding mode when `suggestion_mode` is omitted.
-
-Example response:
+`POST /api/v1/analysis-jobs`
 
 ```json
 {
-  "overall_summary": "Lead with the candidate's supported backend API work.",
-  "suggestions": [
-    {
-      "suggestion_type": "experience_emphasis",
-      "target_section": "work",
-      "original_text": "Built REST APIs with Python",
-      "suggested_text": "Built REST APIs with Python",
-      "reason": "Emphasize direct backend evidence.",
-      "source_evidence_ids": ["E003"],
-      "source_evidence_text": ["Built REST APIs with Python"],
-      "related_requirement_or_direction": "Backend Developer",
-      "risk_level": "low",
-      "requires_user_review": true,
-      "should_add_to_resume": true
-    }
-  ],
-  "missing_but_not_addable": ["Kubernetes"],
-  "suggested_resume_focus": ["Backend Developer"],
-  "warnings": []
+  "extracted_text": "Resume text from /resumes/upload",
+  "preferred_language": "en"
 }
 ```
+
+Returns immediately with a `job_id`, job status, and initial step states.
+
+### Poll Analysis Job
+
+`GET /api/v1/analysis-jobs/{job_id}`
+
+Returns:
+
+- `queued`, `running`, `succeeded`, or `failed`
+- current step
+- per-step status
+- user-facing error message if failed
+- partial/final profile, directions, selected direction, and suggestions
+
+Steps:
+
+- `profile_parsing`
+- `career_directions`
+- `advisor_suggestions`
+- `job_matching`, currently skipped in the default resume-only workflow
+
+### Retry Analysis Job
+
+`POST /api/v1/analysis-jobs/{job_id}/retry`
+
+Restarts the in-memory job from the beginning. This is the simplest safe retry
+behavior for the stateless MVP.
+
+## Direct API Endpoints
+
+The direct endpoints remain available for compatibility, debugging, and smaller
+workflow surfaces:
+
+- `POST /api/v1/resumes/parse-profile`
+- `POST /api/v1/career-directions/recommend`
+- `POST /api/v1/suggestions/generate`
+- `POST /api/v1/jobs/parse`
+- `POST /api/v1/matches/score`
+
+### Profile Parsing
+
+`POST /api/v1/resumes/parse-profile`
+
+Converts extracted resume text into a schema-validated `CandidateProfile`.
+Evidence excerpts and resume facts are preserved in the source language.
+User-facing rationales, strengths, improvement areas, and inferred role
+rationales follow `preferred_language` when natural.
+
+### Career Directions
+
+`POST /api/v1/career-directions/recommend`
+
+Ranks up to five evidence-supported career directions from a `CandidateProfile`.
+When configured, the LLM proposes directions from a normalized evidence summary
+with stable IDs. The service validates citations and computes the final ranking
+deterministically. Without an API key or when proposal generation fails, the
+deterministic catalog fallback is used.
+
+### Suggestions
+
+`POST /api/v1/suggestions/generate`
+
+Generates advisor guidance in `general`, `career_direction`, or `job_specific`
+mode. Resume-ready suggestions must cite valid source evidence and must not add
+unsupported metrics, links, certifications, tools, or missing requirements.
+Gaps that cannot be added safely are returned separately as evidence to build.
+
+### Job Match
+
+`POST /api/v1/jobs/parse` converts a pasted job description into a structured
+`JobProfile`.
+
+`POST /api/v1/matches/score` compares a structured `CandidateProfile` and
+`JobProfile`. The final score is deterministic and requirement-centric. Optional
+semantic matching can use embeddings when configured; failures fall back to the
+deterministic engine.
+
+## Evidence-Grounding Rules
+
+- AI output is not accepted as a candidate fact unless supported by resume
+  evidence.
+- Resume-ready text must preserve factual meaning.
+- Missing capabilities belong in gaps and next actions, not resume-ready text.
+- Technical skills and tool names such as Python, C/C++, ComfyUI, LoRA, and
+  Stable Diffusion stay in their original/common form.
+- User-facing explanations can be English or Simplified Chinese.
+- Source evidence excerpts are not translated.
+
+## Error Handling
+
+Provider exceptions, stack traces, model names, request IDs, and environment
+variable names are kept in backend logs. API responses return friendly messages,
+for example:
+
+- English: `The analysis is taking longer than expected. Please try again.`
+- Chinese: `分析时间较长，请稍后重试。`
 
 ## Tests
 
@@ -328,11 +225,5 @@ source .venv/bin/activate
 pytest -q
 ```
 
-## Current status
-
-Resume upload, PDF/DOCX text extraction, CandidateProfile parsing, JobProfile
-parsing, hybrid match scoring, and career direction recommendations are
-implemented. Evidence-grounded resume improvement suggestions are available
-with structured LLM generation and a deterministic fallback. Database
-persistence, verified fact persistence, and embedding persistence/vector search
-remain future work.
+The test suite uses mock LLM responses where needed and does not require network
+access or an OpenAI API key.
