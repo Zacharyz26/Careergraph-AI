@@ -13,7 +13,7 @@ class Resume(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id"), index=True)
     filename: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(100))
-    file_url: Mapped[str] = mapped_column(Text)
+    file_url: Mapped[str] = mapped_column(Text, default="")
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     parser_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     processing_state: Mapped[str] = mapped_column(String(30), default="pending", index=True)

@@ -31,4 +31,5 @@ coverage/
 
 # Runtime files
 uploads/
+backend/.careergraph_workspace.json
 *.log

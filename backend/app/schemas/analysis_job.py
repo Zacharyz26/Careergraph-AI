@@ -47,6 +47,7 @@ class AnalysisStepState(APIModel):
 class AnalysisJobCreateRequest(APIModel):
     extracted_text: str = Field(min_length=1, max_length=100_000)
     preferred_language: PreferredLanguage = "en"
+    resume_id: UUID | None = None
 
     @field_validator("extracted_text")
     @classmethod

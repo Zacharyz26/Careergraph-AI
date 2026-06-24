@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -13,17 +13,29 @@ import {
   uiCopy,
 } from "@/lib/i18n";
 import type { SuggestionResponse } from "@/lib/types";
+import type {
+  StoredSuggestionReview,
+  SuggestionReviewActionStatus,
+} from "@/lib/types";
 
 export function SuggestionPanel({
   result,
   isLoading = false,
   error = null,
   language = "en",
+  reviews = [],
+  onReview,
 }: {
   result: SuggestionResponse | null;
   isLoading?: boolean;
   error?: string | null;
   language?: PreferredLanguage;
+  reviews?: StoredSuggestionReview[];
+  onReview?: (
+    reviewId: string,
+    status: SuggestionReviewActionStatus,
+    editedText?: string,
+  ) => Promise<void>;
 }) {
   const t = uiCopy[language];
   const strongestEvidence = result ? collectEvidence(result).slice(0, 5) : [];
@@ -99,9 +111,17 @@ export function SuggestionPanel({
                 </div>
                 <h3>{gap.gap}</h3>
                 <p className="suggestion-reason">{gap.why_it_matters}</p>
-                <p className="suggested-copy">
-                  <strong>{t.evidenceToBuild}</strong> {gap.evidence_needed}
-                </p>
+                <div className="gap-action-box">
+                  <span>{t.nextProofToBuild}</span>
+                  <p>{gap.evidence_needed}</p>
+                </div>
+                <ReviewControls
+                  language={language}
+                  onReview={onReview}
+                  review={reviewFor(reviews, "evidence_gaps", result?.evidence_gaps.indexOf(gap) ?? 0)}
+                  reviewId={reviewId("evidence_gaps", result?.evidence_gaps.indexOf(gap) ?? 0)}
+                  text={gap.gap}
+                />
               </article>
             ))}
           </div>
@@ -146,6 +166,13 @@ export function SuggestionPanel({
               )}
               <p className="suggestion-reason">{suggestion.reason}</p>
               <EvidenceLine count={suggestion.source_evidence_ids.length} language={language} />
+              <ReviewControls
+                language={language}
+                onReview={onReview}
+                review={reviewFor(reviews, "resume_ready_improvements", index)}
+                reviewId={reviewId("resume_ready_improvements", index)}
+                text={suggestion.suggested_text}
+              />
             </article>
           ))}
         </AdvisorSection>
@@ -168,6 +195,13 @@ export function SuggestionPanel({
                 <h3>{item.advice}</h3>
                 <p className="suggestion-reason">{item.reason}</p>
                 <EvidenceLine count={item.source_evidence_ids.length} language={language} />
+                <ReviewControls
+                  language={language}
+                  onReview={onReview}
+                  review={reviewFor(reviews, "positioning_advice", index)}
+                  reviewId={reviewId("positioning_advice", index)}
+                  text={item.advice}
+                />
               </article>
             ))}
           </div>
@@ -176,10 +210,12 @@ export function SuggestionPanel({
 
       {result?.recommended_next_actions.length ? (
         <AdvisorSection eyebrow={t.nextActions} title={t.nextActionsTitle}>
-          <div className="action-timeline">
-            {result.recommended_next_actions.map((action) => (
+          <div className="action-timeline action-timeline--plan">
+            {result.recommended_next_actions.map((action, index) => (
               <article className="timeline-item" key={action.action}>
-                <div className="timeline-marker" aria-hidden="true" />
+                <div className="timeline-marker timeline-marker--number" aria-hidden="true">
+                  {index + 1}
+                </div>
                 <div>
                   <div className="suggestion-topline">
                     <span className="suggestion-type">
@@ -191,16 +227,27 @@ export function SuggestionPanel({
                   </div>
                   <h3>{action.action}</h3>
                   <p className="suggestion-reason">{action.rationale}</p>
-                  {action.target_gap ? (
-                    <p className="suggested-copy">
-                      <strong>{t.targets}</strong> {action.target_gap}
-                    </p>
-                  ) : null}
-                  {action.suggested_artifact ? (
-                    <p className="suggested-copy">
-                      <strong>{t.usefulArtifact}</strong> {action.suggested_artifact}
-                    </p>
-                  ) : null}
+                  <div className="next-action-grid">
+                    {action.target_gap ? (
+                      <div>
+                        <span>{t.targets}</span>
+                        <p>{action.target_gap}</p>
+                      </div>
+                    ) : null}
+                    {action.suggested_artifact ? (
+                      <div>
+                        <span>{t.usefulArtifact}</span>
+                        <p>{action.suggested_artifact}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                  <ReviewControls
+                    language={language}
+                    onReview={onReview}
+                    review={reviewFor(reviews, "recommended_next_actions", result.recommended_next_actions.indexOf(action))}
+                    reviewId={reviewId("recommended_next_actions", result.recommended_next_actions.indexOf(action))}
+                    text={action.action}
+                  />
                 </div>
               </article>
             ))}
@@ -234,6 +281,120 @@ export function SuggestionPanel({
       ) : null}
     </section>
   );
+}
+
+function ReviewControls({
+  language,
+  onReview,
+  review,
+  reviewId,
+  text,
+}: {
+  language: PreferredLanguage;
+  onReview?: (
+    reviewId: string,
+    status: SuggestionReviewActionStatus,
+    editedText?: string,
+  ) => Promise<void>;
+  review?: StoredSuggestionReview;
+  reviewId: string;
+  text: string;
+}) {
+  const t = uiCopy[language];
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(review?.edited_text || text);
+  const [isSaving, setIsSaving] = useState(false);
+  const status = review?.status ?? "pending_review";
+  const statusLabel = {
+    pending_review: t.reviewStatusPending,
+    accepted: t.reviewStatusAccepted,
+    edited: t.reviewStatusEdited,
+    rejected: t.reviewStatusRejected,
+  }[status];
+
+  async function submit(status: SuggestionReviewActionStatus, editedText?: string) {
+    if (!onReview) return;
+    setIsSaving(true);
+    try {
+      await onReview(reviewId, status, editedText);
+      setIsEditing(false);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="review-controls">
+      <span className={`review-status review-status--${status}`}>{statusLabel}</span>
+      {isEditing ? (
+        <div className="review-editor">
+          <textarea
+            aria-label={t.reviewEditPlaceholder}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={t.reviewEditPlaceholder}
+            value={draft}
+          />
+          <div className="review-actions">
+            <button
+              className="button button--dark button--compact"
+              disabled={isSaving || !draft.trim()}
+              onClick={() => submit("edited", draft.trim())}
+              type="button"
+            >
+              {t.saveEdit}
+            </button>
+            <button
+              className="button button--ghost button--compact"
+              disabled={isSaving}
+              onClick={() => setIsEditing(false)}
+              type="button"
+            >
+              {t.cancelEdit}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="review-actions">
+          <button
+            className="button button--ghost button--compact"
+            disabled={!onReview || isSaving}
+            onClick={() => submit("accepted")}
+            type="button"
+          >
+            {t.acceptSuggestion}
+          </button>
+          <button
+            className="button button--ghost button--compact"
+            disabled={!onReview || isSaving}
+            onClick={() => setIsEditing(true)}
+            type="button"
+          >
+            {t.editSuggestion}
+          </button>
+          <button
+            className="button button--ghost button--compact"
+            disabled={!onReview || isSaving}
+            onClick={() => submit("rejected")}
+            type="button"
+          >
+            {t.rejectSuggestion}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function reviewId(section: string, index: number) {
+  return `${section}:${index}`;
+}
+
+function reviewFor(
+  reviews: StoredSuggestionReview[],
+  section: string,
+  index: number,
+) {
+  return reviews.find((review) => review.review_id === reviewId(section, index));
 }
 
 function AdvisorSection({

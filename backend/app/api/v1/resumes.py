@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
+from app.core.security import WorkspaceUser, current_workspace_user
 from app.schemas.common import ProcessingStatus
 from app.schemas.resume import (
     ResumeProfileParseRequest,
@@ -12,11 +13,13 @@ from app.schemas.resume import (
 from app.services.document_parser import DocumentParser, DocumentParserError
 from app.services.llm_service import LLMResponseError, LLMServiceError, MissingAPIKeyError
 from app.services.resume_profile_service import ResumeProfileService
+from app.services.workspace_store import WorkspaceStore
 from app.utils.file_utils import safe_filename
 
 router = APIRouter()
 document_parser = DocumentParser()
 resume_profile_service = ResumeProfileService()
+workspace_store = WorkspaceStore()
 
 
 def profile_analysis_error_detail(preferred_language: str, error: Exception) -> str:
@@ -35,7 +38,10 @@ def profile_analysis_error_detail(preferred_language: str, error: Exception) -> 
     response_model=ResumeUploadResponse,
     response_model_exclude_none=True,
 )
-async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: WorkspaceUser = Depends(current_workspace_user),
+) -> ResumeUploadResponse:
     filename = safe_filename(file.filename or "")
     if not filename:
         raise HTTPException(
@@ -54,13 +60,15 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     finally:
         await file.close()
 
-    return ResumeUploadResponse(
+    upload = ResumeUploadResponse(
         filename=filename,
         file_type=parsed.file_type,
         extracted_text=parsed.extracted_text,
         character_count=len(parsed.extracted_text),
         page_count=parsed.page_count,
     )
+    stored_resume = await workspace_store.save_uploaded_resume(upload, current_user)
+    return upload.model_copy(update={"resume_id": stored_resume.resume_id})
 
 
 @router.post("/parse-profile", response_model=ResumeProfileParseResponse)

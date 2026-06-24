@@ -90,15 +90,30 @@ class LLMService:
             max_retries=self.max_retries,
         )
         try:
-            completion = await client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
+            request_options = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format=response_model,
-                temperature=0,
-            )
+                "response_format": response_model,
+            }
+            try:
+                completion = await client.beta.chat.completions.parse(
+                    **request_options,
+                    temperature=0,
+                )
+            except BadRequestError as exc:
+                if not self._is_unsupported_temperature_error(exc):
+                    raise
+                logger.info(
+                    "Retrying structured generation without temperature: model=%s request_id=%s",
+                    self.model,
+                    getattr(exc, "request_id", None),
+                )
+                completion = await client.beta.chat.completions.parse(
+                    **request_options,
+                )
         except OpenAIError as exc:
             self._log_provider_error(exc)
             raise LLMServiceError(self._public_provider_error(exc)) from exc
@@ -161,3 +176,7 @@ class LLMService:
         if self.api_key:
             return message.replace(self.api_key, "[REDACTED]")
         return message
+
+    def _is_unsupported_temperature_error(self, exc: BadRequestError) -> bool:
+        message = str(exc).casefold()
+        return "temperature" in message and "unsupported" in message

@@ -36,6 +36,7 @@ class VerifiedFact(APIModel):
 
 
 class ResumeUploadResponse(APIModel):
+    resume_id: UUID | None = None
     filename: str
     file_type: Literal["pdf", "docx"]
     extracted_text: str = Field(min_length=1)

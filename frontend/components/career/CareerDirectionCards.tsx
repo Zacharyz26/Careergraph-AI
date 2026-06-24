@@ -18,6 +18,7 @@ type CareerDirectionCardsProps = {
   isLoading?: boolean;
   error?: string | null;
   language?: PreferredLanguage;
+  showSelectedReport?: boolean;
 };
 
 export function CareerDirectionCards({
@@ -27,6 +28,7 @@ export function CareerDirectionCards({
   isLoading = false,
   error = null,
   language = "en",
+  showSelectedReport = true,
 }: CareerDirectionCardsProps) {
   const t = uiCopy[language];
   return (
@@ -89,52 +91,172 @@ export function CareerDirectionCards({
           })}
         </div>
 
-        {selected ? (
-          <aside className="selected-direction-panel">
-            <div className="selected-direction-topline">
-              <span className={`fit-badge fit-badge--${selected.fit_type}`}>
-                {fitTypeLabels[language][selected.fit_type]}
-              </span>
-              <span>{confidenceLabels[language][selected.confidence_level]} {t.confidenceSuffix}</span>
+      </div>
+
+      {selected && showSelectedReport ? (
+        <SelectedDirectionReport direction={selected} language={language} />
+      ) : null}
+    </section>
+  );
+}
+
+export function SelectedDirectionReport({
+  direction,
+  language = "en",
+}: {
+  direction: CareerDirection;
+  language?: PreferredLanguage;
+}) {
+  const t = uiCopy[language];
+  return (
+    <section className="selected-direction-analysis">
+      <div className="selected-direction-analysis__header">
+        <div>
+          <span className="eyebrow">{t.advisorReport}</span>
+          <h3>{direction.direction}</h3>
+          <p>{t.selectedDirectionSubtitle}</p>
+        </div>
+        <div className="selected-direction-analysis__meta">
+          <span className={`fit-badge fit-badge--${direction.fit_type}`}>
+            {fitTypeLabels[language][direction.fit_type]}
+          </span>
+          <span>{direction.role_family}</span>
+          <span>{direction.seniority_level}</span>
+          <span>{confidenceLabels[language][direction.confidence_level]} {t.confidenceSuffix}</span>
+        </div>
+      </div>
+
+      <div className="advisor-report-lead">
+        <div>
+          <span>{t.recommendationLogic}</span>
+          <p>
+            {direction.strengths_for_this_direction[0] ??
+              direction.matched_evidence[0]?.text ??
+              t.evidenceSupportedDirection}
+          </p>
+        </div>
+        {direction.example_job_titles.length ? (
+          <div>
+            <span>{t.roleTargets}</span>
+            <div className="tag-list">
+              {direction.example_job_titles.slice(0, 4).map((title) => (
+                <span className="tag tag--neutral" key={title}>{title}</span>
+              ))}
             </div>
-            <h3>{selected.direction}</h3>
-            <p>
-              {selected.role_family} · {selected.seniority_level} · {selected.score_range_low}
-              -{selected.score_range_high} {t.fitRange}
-            </p>
-
-            <DirectionSection title={t.whyThisFits}>
-              <ul className="clean-list">
-                {selected.strengths_for_this_direction.slice(0, 4).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </DirectionSection>
-
-            <DirectionSection title={t.readinessGaps}>
-              {selected.gaps_for_this_direction.length ? (
-                <ul className="clean-list clean-list--warning">
-                  {selected.gaps_for_this_direction.slice(0, 4).map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="empty-copy">{t.noMaterialGaps}</p>
-              )}
-            </DirectionSection>
-
-            {selected.example_job_titles.length ? (
-              <DirectionSection title={t.exampleTitles}>
-                <div className="tag-list">
-                  {selected.example_job_titles.slice(0, 5).map((title) => (
-                    <span className="tag tag--neutral" key={title}>{title}</span>
-                  ))}
-                </div>
-              </DirectionSection>
-            ) : null}
-          </aside>
+          </div>
         ) : null}
       </div>
+
+      <div className="career-analysis-grid">
+        <DirectionSection title={t.keySupportingEvidence}>
+          <p className="empty-copy">{t.evidenceAuditBody}</p>
+          <div className="evidence-audit-list evidence-audit-list--advisor">
+            {direction.matched_evidence.slice(0, 6).map((item, index) => (
+              <article className="evidence-audit-item evidence-audit-item--advisor" key={item.evidence_id}>
+                <div className="evidence-audit-index">
+                  <span>{index + 1}</span>
+                  <small>{item.source_type}</small>
+                </div>
+                <div>
+                  <p>{item.text}</p>
+                  {item.matched_concepts.length ? (
+                    <div className="mini-tag-list">
+                      {item.matched_concepts.slice(0, 4).map((concept) => (
+                        <span key={concept}>{concept}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </DirectionSection>
+
+        <DirectionSection title={t.whyThisFits}>
+          <ul className="advisor-proof-list">
+            {direction.strengths_for_this_direction.slice(0, 5).map((item) => (
+              <li key={item}>
+                <span aria-hidden="true">✓</span>
+                <p>{item}</p>
+              </li>
+            ))}
+          </ul>
+        </DirectionSection>
+
+        <DirectionSection title={t.rolePositioning}>
+          <p className="empty-copy">{t.rolePositioningBody}</p>
+          {direction.resume_positioning_advice.length ? (
+            <ul className="advisor-proof-list">
+              {direction.resume_positioning_advice.slice(0, 4).map((item) => (
+                <li key={item}>
+                  <span aria-hidden="true">→</span>
+                  <p>{item}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-copy">{t.noPositioningAdvice}</p>
+          )}
+        </DirectionSection>
+
+        <DirectionSection title={t.strengthsAlreadyDemonstrated}>
+          <p className="empty-copy">{t.existingEvidenceBody}</p>
+          <div className="strength-signal-list">
+            {direction.matched_evidence.slice(0, 5).map((item) => (
+              <span className="tag tag--neutral" key={item.evidence_id}>
+                {item.source_type}
+              </span>
+            ))}
+          </div>
+        </DirectionSection>
+
+        <DirectionSection title={t.readinessGaps}>
+          {direction.gaps_for_this_direction.length ? (
+            <div className="actionable-gap-list">
+              {direction.gaps_for_this_direction.slice(0, 5).map((item, index) => (
+                <article className="actionable-gap" key={item}>
+                  <span>{index + 1}</span>
+                  <div>
+                    <strong>{t.buildEvidence}</strong>
+                    <p>{item}</p>
+                    <small>{t.gapActionHint}</small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-copy">{t.noMaterialGaps}</p>
+          )}
+        </DirectionSection>
+
+        <DirectionSection title={t.growthRoadmap}>
+          <p className="empty-copy">{t.growthRoadmapBody}</p>
+          <div className="growth-roadmap-list">
+            <article className="growth-roadmap-item">
+              <span>1</span>
+              <p>{t.roadmapStepEvidence}</p>
+            </article>
+            <article className="growth-roadmap-item">
+              <span>2</span>
+              <p>{t.roadmapStepProof}</p>
+            </article>
+            <article className="growth-roadmap-item">
+              <span>3</span>
+              <p>{t.roadmapStepResume}</p>
+            </article>
+          </div>
+        </DirectionSection>
+      </div>
+
+      {direction.example_job_titles.length ? (
+        <DirectionSection title={t.exampleTitles}>
+          <div className="tag-list">
+            {direction.example_job_titles.slice(0, 7).map((title) => (
+              <span className="tag tag--neutral" key={title}>{title}</span>
+            ))}
+          </div>
+        </DirectionSection>
+      ) : null}
     </section>
   );
 }

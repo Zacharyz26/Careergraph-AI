@@ -29,6 +29,7 @@ export type SeniorityLevel =
 export type PreferredLanguage = "en" | "zh";
 
 export interface ResumeUploadResponse {
+  resume_id?: string;
   filename: string;
   file_type: "pdf" | "docx";
   extracted_text: string;
@@ -338,4 +339,74 @@ export interface AnalysisJobResponse {
   suggestions?: SuggestionResponse;
   created_at: string;
   updated_at: string;
+}
+
+export type SuggestionReviewStatus =
+  | "pending_review"
+  | "accepted"
+  | "edited"
+  | "rejected";
+
+export interface StoredSuggestionReview {
+  review_id: string;
+  section: string;
+  item_index: number;
+  status: SuggestionReviewStatus;
+  original_text?: string;
+  edited_text?: string;
+  note?: string;
+  updated_at: string;
+}
+
+export type SuggestionReviewActionStatus = "accepted" | "edited" | "rejected";
+
+export interface SuggestionReviewUpdateRequest {
+  status: SuggestionReviewActionStatus;
+  edited_text?: string;
+  note?: string;
+}
+
+export interface AnalysisHistoryItem {
+  analysis_id: string;
+  resume_id?: string;
+  filename?: string;
+  preferred_language: PreferredLanguage;
+  status: AnalysisJobStatus;
+  candidate_name?: string;
+  top_direction?: string;
+  suggestion_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnalysisHistoryResponse {
+  analyses: AnalysisHistoryItem[];
+}
+
+export interface StoredResume {
+  resume_id: string;
+  filename: string;
+  file_type: "pdf" | "docx";
+  extracted_text: string;
+  character_count: number;
+  page_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredAnalysis {
+  analysis_id: string;
+  resume_id?: string;
+  filename?: string;
+  preferred_language: PreferredLanguage;
+  status: AnalysisJobStatus;
+  analysis_job: AnalysisJobResponse;
+  suggestion_reviews: StoredSuggestionReview[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StoredAnalysisDetail {
+  analysis: StoredAnalysis;
+  resume?: StoredResume;
 }

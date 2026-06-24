@@ -7,6 +7,7 @@ from app.api.v1 import (
     matches,
     resumes,
     suggestions,
+    workspace,
 )
 
 api_router = APIRouter()
@@ -24,3 +25,4 @@ api_router.include_router(resumes.router, prefix="/resumes", tags=["resumes"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(matches.router, prefix="/matches", tags=["matches"])
 api_router.include_router(suggestions.router, prefix="/suggestions", tags=["suggestions"])
+api_router.include_router(workspace.router, prefix="/workspace", tags=["workspace"])

@@ -1,4 +1,5 @@
 from io import BytesIO
+from uuid import UUID
 
 import httpx
 import pytest
@@ -8,6 +9,13 @@ from app.main import app
 from app.schemas.candidate import CandidateProfile, InferredTargetRole
 from app.services.llm_service import LLMService, LLMServiceError
 from app.services.resume_profile_service import ResumeProfileService
+
+
+class FakeWorkspaceStore:
+    async def save_uploaded_resume(self, upload, user=None):
+        return upload.model_copy(
+            update={"resume_id": UUID("11111111-1111-4111-8111-111111111111")}
+        )
 
 
 @pytest.mark.asyncio
@@ -23,7 +31,10 @@ async def test_health_check() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_docx_resume() -> None:
+async def test_upload_docx_resume(monkeypatch) -> None:
+    from app.api.v1 import resumes
+
+    monkeypatch.setattr(resumes, "workspace_store", FakeWorkspaceStore())
     document = Document()
     document.add_paragraph("Backend Engineer with Python experience")
     buffer = BytesIO()
@@ -45,7 +56,10 @@ async def test_upload_docx_resume() -> None:
         )
 
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert body["resume_id"]
+    assert body == {
+        "resume_id": body["resume_id"],
         "filename": "resume.docx",
         "file_type": "docx",
         "extracted_text": "Backend Engineer with Python experience",

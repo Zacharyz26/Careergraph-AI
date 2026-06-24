@@ -36,9 +36,16 @@ class Settings(BaseSettings):
     matching_enable_semantic: bool = True
     matching_enable_llm_judge: bool = False
     career_directions_enable_llm: bool = True
+    workspace_default_user_email: str = "local@careergraph.local"
+    workspace_enable_json_fallback: bool = True
+    workspace_fallback_store_path: Path = BACKEND_DIR / ".careergraph_workspace.json"
     database_url: str = "postgresql+asyncpg://careergraph:careergraph@localhost:5432/careergraph"
+    database_connect_timeout_seconds: float = Field(default=2, gt=0)
     redis_url: str = "redis://localhost:6379/0"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    allowed_origin_regex: str | None = (
+        r"^http://(localhost|127\.0\.0\.1|172\.\d{1,3}\.\d{1,3}\.\d{1,3}):3000$"
+    )
 
     @field_validator("openai_base_url", mode="before")
     @classmethod

@@ -10,8 +10,11 @@ from app.schemas.career_direction import (
     CareerDirectionResponse,
     DirectionEvidence,
 )
+from app.schemas.analysis_job import AnalysisJobCreateRequest
 from app.schemas.suggestion import SuggestionResponse
 from app.services.analysis_job_service import AnalysisJobService
+from app.schemas.workspace import StoredAnalysis, StoredAnalysisDetail, StoredResume, utc_now
+from app.services.workspace_store import WorkspaceRecordNotFoundError
 
 
 def profile() -> CandidateProfile:
@@ -99,6 +102,49 @@ class FakeSuggestionService:
         return SuggestionResponse(overall_summary="Use backend API evidence.")
 
 
+class FakeWorkspaceStore:
+    async def save_analysis(self, response, request, user=None):
+        return None
+
+    async def get_analysis(self, job_id, user=None):
+        raise WorkspaceRecordNotFoundError(str(job_id))
+
+
+class RecoverableWorkspaceStore:
+    def __init__(self) -> None:
+        self.response = None
+        self.request = None
+
+    async def save_analysis(self, response, request, user=None):
+        self.response = response
+        self.request = request
+        return None
+
+    async def get_analysis(self, job_id, user=None):
+        if not self.response or not self.request:
+            raise WorkspaceRecordNotFoundError(str(job_id))
+        now = utc_now()
+        return StoredAnalysisDetail(
+            analysis=StoredAnalysis(
+                analysis_id=self.response.job_id,
+                status=self.response.status,
+                preferred_language=self.response.preferred_language,
+                analysis_job=self.response,
+                created_at=self.response.created_at,
+                updated_at=self.response.updated_at,
+            ),
+            resume=StoredResume(
+                resume_id=self.request.resume_id or self.response.job_id,
+                filename="resume.docx",
+                file_type="docx",
+                extracted_text=self.request.extracted_text,
+                character_count=len(self.request.extracted_text),
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+
+
 async def wait_for_terminal(client: httpx.AsyncClient, job_id: str) -> dict:
     for _ in range(20):
         response = await client.get(f"/api/v1/analysis-jobs/{job_id}")
@@ -120,6 +166,7 @@ async def test_analysis_job_runs_steps_and_returns_results(monkeypatch) -> None:
             resume_profile_service=FakeProfileService(),
             career_direction_service=FakeDirectionService(),
             suggestion_service=FakeSuggestionService(),
+            workspace_store=FakeWorkspaceStore(),
         ),
     )
 
@@ -162,6 +209,7 @@ async def test_analysis_job_failure_uses_friendly_localized_error(monkeypatch) -
             resume_profile_service=FailingThenPassingProfileService(),
             career_direction_service=FakeDirectionService(),
             suggestion_service=FakeSuggestionService(),
+            workspace_store=FakeWorkspaceStore(),
         ),
     )
 
@@ -196,6 +244,7 @@ async def test_analysis_job_retry_restarts_failed_job(monkeypatch) -> None:
             resume_profile_service=FailingThenPassingProfileService(),
             career_direction_service=FakeDirectionService(),
             suggestion_service=FakeSuggestionService(),
+            workspace_store=FakeWorkspaceStore(),
         ),
     )
 
@@ -217,3 +266,38 @@ async def test_analysis_job_retry_restarts_failed_job(monkeypatch) -> None:
 
     assert succeeded["status"] == "succeeded"
     assert succeeded["error_message"] is None
+
+
+@pytest.mark.asyncio
+async def test_analysis_job_get_recovers_saved_terminal_job() -> None:
+    store = RecoverableWorkspaceStore()
+    first_service = AnalysisJobService(
+        resume_profile_service=FakeProfileService(),
+        career_direction_service=FakeDirectionService(),
+        suggestion_service=FakeSuggestionService(),
+        workspace_store=store,
+    )
+    created = await first_service.create_job(
+        AnalysisJobCreateRequest(extracted_text="Built REST APIs with Python")
+    )
+
+    for _ in range(20):
+        terminal = await first_service.get_job(created.job_id)
+        if terminal.status == "succeeded":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("analysis job did not finish")
+
+    restarted_service = AnalysisJobService(
+        resume_profile_service=FakeProfileService(),
+        career_direction_service=FakeDirectionService(),
+        suggestion_service=FakeSuggestionService(),
+        workspace_store=store,
+    )
+
+    recovered = await restarted_service.get_job(created.job_id)
+
+    assert recovered.status == "succeeded"
+    assert recovered.profile
+    assert recovered.career_directions
