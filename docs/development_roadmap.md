@@ -4,57 +4,65 @@
 
 - Monorepo with FastAPI backend and Next.js frontend.
 - PDF/DOCX resume upload and text extraction.
+- Async analysis jobs with step-level progress and retry.
 - Structured `CandidateProfile` parsing.
 - Evidence-supported career direction recommendation.
+- Full selected-direction Advisor Report.
 - Advisor-style guidance for selected career directions.
 - Separation between resume-ready improvements and evidence to build next.
-- Optional job description parsing and resume-to-job match scoring.
+- Suggestion review state for accept/edit/reject workflows.
+- Local analysis history and saved analysis reopening.
+- Workspace storage through PostgreSQL when available, with JSON fallback for
+  local development.
+- Optional pasted job description parsing and resume-to-job match scoring.
 - Hybrid deterministic match scoring with optional semantic matching.
-- In-memory async analysis jobs with step-level progress and retry.
 - English and Simplified Chinese UI/advisor language preference support.
-- Friendly user-facing error handling for AI/provider failures.
+- Friendly localized error handling for AI/provider failures.
 - Backend and frontend validation commands.
 
 ## Current MVP: Intentional Limits
 
-- Stateless user workflow.
-- In-memory analysis jobs only.
-- No authentication.
-- No persisted resumes, jobs, facts, matches, suggestions, or versions.
+- No real authentication or identity provider.
+- No production-grade authorization.
+- No billing, subscriptions, payments, or plan enforcement.
+- No production deployment hardening.
+- No durable worker queue.
 - No resume export.
-- No payments.
 - No auto-apply, scraping, or browser automation.
-- No saved job board or batch matching.
+- No saved job board or batch job discovery.
+- No guarantee that local JSON fallback is appropriate for production data.
 
-## Phase 1: Stabilize the MVP
+## Phase 1: Launch-Readiness Hardening
 
-- Add more representative resume and job fixtures.
+- Add more representative resume fixtures.
 - Add regression tests for English/Chinese output behavior.
 - Improve timeout and retry observability.
-- Add lightweight cost/latency logging for AI tasks.
-- Add stronger frontend tests around analysis job polling and failure states.
-- Refine UX copy for failed jobs, partial results, and retry.
+- Add cost/latency logging for AI tasks.
+- Add frontend tests around analysis job polling, history reopening, and failure
+  states.
+- Add privacy copy and local data handling notes in the UI.
+- Improve validation around saved workspace records.
 
-## Phase 2: Durable Workflow Infrastructure
+## Phase 2: Production Workspace Foundation
 
-- Persist analysis jobs and step states.
-- Introduce a durable worker queue, likely Redis-backed.
-- Persist uploaded resume metadata and extracted text.
-- Persist generated profiles, direction results, and advisor output.
-- Add cleanup/retention policies for uploaded and generated data.
-- Add operational logs, metrics, and failure dashboards.
-
-## Phase 3: Authenticated Product Foundation
-
-- Add authentication and user ownership boundaries.
+- Replace header/default-user ownership with real authentication.
+- Make PostgreSQL the required production workspace store.
 - Add repository-level authorization checks.
-- Add user-scoped resumes, jobs, matches, and suggestions.
-- Add saved analysis history.
-- Add privacy and data deletion controls.
+- Add retention and deletion policies.
+- Add migration and seed documentation.
+- Add backup/restore guidance for production data.
+
+## Phase 3: Durable AI Job Infrastructure
+
+- Persist running job state durably.
+- Introduce a worker queue, likely Redis-backed.
+- Add idempotency for analysis job creation/retry.
+- Add operational logs, metrics, and failure dashboards.
+- Add model cost tracking and rate-limit controls.
 
 ## Phase 4: Human Review and Resume Versions
 
-- Implement suggestion accept/edit/reject state transitions.
+- Deepen suggestion accept/edit/reject transitions.
 - Store verified facts and user corrections.
 - Save target-specific resume versions.
 - Compare versions and track change history.
@@ -62,17 +70,17 @@
 
 ## Phase 5: Product Expansion
 
-- Saved job board.
-- Batch comparison across multiple jobs.
 - Portfolio/project evidence analysis.
-- 30/60/90 day evidence-building roadmap.
+- Personalized evidence-building roadmaps.
+- Interview preparation based on selected direction and evidence gaps.
+- Application tracking without auto-apply.
 - User-initiated job import where permitted.
-- Deployment hardening and production security review.
 
 ## Out of Scope Unless Explicitly Revisited
 
 - Automatic application submission.
 - LinkedIn scraping.
+- Restrictive job board scraping.
 - Browser automation for applications.
 - Fabricating resume claims, credentials, links, metrics, or experience.
 - Hiring probability promises.

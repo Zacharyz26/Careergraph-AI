@@ -2,27 +2,28 @@
 
 Base path: `/api/v1`
 
-The current API is an MVP contract for stateless resume analysis. Existing
-direct endpoints remain available, but the main frontend Analyze flow now uses
-asynchronous analysis jobs.
+The API supports the current evidence-grounded career advisor MVP. The main
+frontend flow uses async analysis jobs plus workspace history. Direct endpoints
+remain available for compatibility and smaller workflow surfaces.
 
 ## System
 
-- `GET /health`: process health check. This endpoint is mounted at the app root,
-  not under `/api/v1`.
+- `GET /health`: process health check mounted at the app root, not under
+  `/api/v1`.
 
-## Main Analysis Jobs
+## Analysis Jobs
 
 ### `POST /analysis-jobs`
 
-Creates an in-memory analysis job and returns immediately.
+Creates an async resume analysis job and returns immediately.
 
 Request:
 
 ```json
 {
   "extracted_text": "Resume text returned by /resumes/upload",
-  "preferred_language": "en"
+  "preferred_language": "en",
+  "resume_id": "optional-resume-id"
 }
 ```
 
@@ -32,7 +33,7 @@ Response includes:
 - `queued | running | succeeded | failed`
 - step states
 - preferred language
-- partial results when available
+- partial/final results when available
 
 ### `GET /analysis-jobs/{job_id}`
 
@@ -60,30 +61,32 @@ Results may include:
 - `selected_direction`
 - `suggestions`
 
-`job_matching` is skipped in the default resume-only workflow. Optional job
-match remains a separate user-triggered flow.
+`job_matching` is skipped in the default resume-only workflow.
 
 ### `POST /analysis-jobs/{job_id}/retry`
 
-Restarts a failed job from the beginning. This is intentionally simple for the
-stateless MVP.
+Restarts a failed job from the beginning.
 
-Jobs are process-local and not durable across backend restarts.
+Running jobs are process-local. Completed results can be saved to workspace
+storage, but this is not a production-grade background job system yet.
 
 ## Resumes and Profiles
 
 ### `POST /resumes/upload`
 
-Uploads a PDF or DOCX resume as multipart form data and extracts text. This
-endpoint does not call an LLM and does not store the file.
+Uploads a PDF or DOCX resume as multipart form data and extracts text.
 
 Response:
 
+- `resume_id`
 - `filename`
 - `file_type`
 - `extracted_text`
 - `character_count`
 - `page_count` when available
+
+When workspace storage is enabled, resume metadata and extracted text can be
+stored for local history/reopening.
 
 ### `POST /resumes/parse-profile`
 
@@ -100,13 +103,6 @@ Request:
 
 Evidence excerpts and resume facts stay in the source language. User-facing
 rationales and summaries can follow the requested language.
-
-### Placeholder resume endpoints
-
-These routes exist as placeholders and return `501 Not Implemented`:
-
-- `GET /resumes/{resume_id}`
-- `GET /resumes/{resume_id}/status`
 
 ## Career Directions
 
@@ -158,10 +154,26 @@ Resume-ready improvements are the only resume-ready text. Missing skills,
 unsupported credentials, unsupported metrics, and other gaps must not be added
 to resume-ready text.
 
-### Placeholder review endpoint
+## Workspace
 
-`PATCH /suggestions/{suggestion_id}` currently returns `501 Not Implemented`.
-Persistent suggestion review is future work.
+### `GET /workspace/analyses`
+
+Lists saved analyses for the current workspace user.
+
+### `GET /workspace/analyses/{analysis_id}`
+
+Returns a saved resume and analysis result so the frontend can reopen a previous
+analysis.
+
+### `PATCH /workspace/analyses/{analysis_id}/suggestions/{review_id}`
+
+Updates suggestion review state.
+
+Supported review statuses are intended for human review workflows such as
+pending, accepted, edited, and rejected. This does not generate resume exports.
+
+Workspace ownership currently comes from `X-CareerGraph-User-Email` or the
+development default user. This is not real auth.
 
 ## Jobs
 
@@ -173,13 +185,6 @@ The parser extracts required/preferred skills, responsibilities,
 qualifications, education requirements, experience requirements, role family,
 seniority, employment type, location, remote policy, and supported metadata when
 present.
-
-### Placeholder job endpoints
-
-These are not implemented yet:
-
-- `POST /jobs`
-- `GET /jobs/{job_id}`
 
 ## Matches
 
@@ -200,13 +205,6 @@ The engine:
 Response includes requirement-level decisions, evidence, missing skills,
 transferable matches, component scores, risk penalties, explanation, and
 recommendation label.
-
-### Placeholder match endpoints
-
-These are not implemented yet:
-
-- `POST /matches`
-- `GET /matches/{match_id}`
 
 ## Language
 
@@ -241,7 +239,7 @@ Examples of user-facing errors:
 ## Conventions
 
 - Request and response bodies use Pydantic v2 schemas.
-- The current MVP is stateless except for process-local analysis jobs.
-- UUIDs appear in job and future persistence-oriented contracts.
-- Authentication, pagination, durable idempotency, and rate-limit headers are
+- UUIDs are used for jobs, resumes, analyses, and future durable contracts.
+- Current workspace ownership is an MVP scaffold.
+- Production auth, pagination, durable idempotency, and rate-limit headers are
   future public API work.

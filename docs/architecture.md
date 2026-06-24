@@ -3,34 +3,35 @@
 ## Overview
 
 CareerGraph AI is a monorepo with a Next.js frontend and FastAPI backend. The
-current product is a stateless MVP for evidence-grounded career intelligence,
-not a production multi-user SaaS.
+current product is an evidence-grounded AI career advisor workspace for resume
+analysis, career direction recommendation, and advisor-style next steps.
 
-The main workflow turns a resume into:
-
-- a structured evidence profile
-- realistic career direction hypotheses
-- readiness gaps
-- advisor-style guidance
-- resume-safe improvements and next actions
-
-Optional job match remains secondary to the career direction workflow.
+It is an MVP with local workspace history and production-oriented persistence
+scaffolding. It is not yet a production multi-user SaaS with real auth, billing,
+deployment hardening, or durable workers.
 
 ## Runtime Shape
 
 ```text
 Browser / Next.js
   -> FastAPI /api/v1
-    -> document parser
-    -> in-memory analysis job service
+    -> resume parser
+    -> async analysis job service
     -> profile, direction, suggestion, job, and match services
+    -> workspace store
     -> OpenAI structured output where configured
 ```
 
-The application includes PostgreSQL, Redis, SQLAlchemy models, and Docker
-Compose scaffolding for future production architecture. The currently
-implemented business workflow does not persist resumes, profiles, jobs, matches,
-or suggestions.
+The main workflow turns a resume into:
+
+- a structured evidence profile
+- realistic career direction hypotheses
+- a selected-direction Advisor Report
+- readiness gaps
+- advisor guidance
+- resume-safe improvements and next actions
+
+Optional pasted job match remains secondary.
 
 ## Frontend
 
@@ -43,9 +44,10 @@ It provides:
 - Async job creation and polling.
 - Step-level progress UI.
 - Evidence profile panel.
-- Career direction cards and selected-direction details.
-- Advisor guidance sections.
-- Optional job description match panel.
+- Career direction ranking cards.
+- Full-width selected-direction Advisor Report.
+- Advisor guidance and suggestion review controls.
+- Analysis history and saved analysis reopening.
 - Lightweight English/Simplified Chinese UI dictionary.
 
 ## Backend
@@ -57,14 +59,14 @@ Key areas:
 
 - `app/api/v1/`: HTTP routes.
 - `app/schemas/`: request and response contracts.
-- `app/services/`: parsing, direction recommendation, suggestion, matching, and
-  in-memory analysis job orchestration.
-- `app/models/` and `app/repositories/`: production-oriented persistence
-  scaffolding, not used by the main MVP workflow yet.
+- `app/services/`: parsing, direction recommendation, suggestion, matching,
+  analysis job orchestration, and workspace storage.
+- `app/models/`: SQLAlchemy models for future durable SaaS workspace data.
+- `migrations/`: Alembic migrations for PostgreSQL schema setup.
 
 ## Async Analysis Jobs
 
-The Analyze button now creates an in-memory job:
+The Analyze button creates a process-local async job:
 
 1. `POST /api/v1/analysis-jobs`
 2. Backend returns a `job_id` immediately.
@@ -80,21 +82,40 @@ Steps:
 - Advisor/Suggestions
 - Job Matching, skipped in the default resume-only workflow
 
-This avoids holding a single browser request open for the full AI workflow. It
-is intentionally not durable: jobs are process-local and disappear on backend
-restart.
+The job runner avoids long browser requests but is not a durable production
+queue. Jobs are process-local while running.
+
+## Workspace Storage
+
+The workspace layer supports:
+
+- saved uploaded resume metadata and extracted text
+- saved completed analysis results
+- saved profile, directions, selected direction, and suggestions
+- suggestion review status and edited text
+- analysis history and reopening previous analyses
+
+Storage modes:
+
+- PostgreSQL through SQLAlchemy models when configured.
+- JSON fallback at `.careergraph_workspace.json` for local development when
+  `WORKSPACE_ENABLE_JSON_FALLBACK=true`.
+
+The current workspace user is resolved from `X-CareerGraph-User-Email` or a
+development default user in non-production. This creates an ownership boundary
+for local MVP work, but it is not real authentication.
 
 ## AI and Evidence-Grounding
 
-CareerGraph AI uses LLMs as structured assistants, not as authorities.
+CareerGraph uses LLMs as structured assistants, not as authorities.
 
 Principles:
 
 - Candidate facts must come from resume evidence.
 - Resume-ready improvements must cite valid source evidence.
 - Missing capabilities are represented as readiness gaps and next actions, not
-  as resume claims.
-- Deterministic code validates and ranks career directions.
+  resume claims.
+- Deterministic code validates career direction citations and ranking.
 - Deterministic matching computes final job-fit scores.
 - Provider failures return friendly errors and keep technical details in logs.
 
@@ -113,7 +134,7 @@ The direction recommender follows proposal, validation, and ranking:
 
 ## Advisor Guidance
 
-Suggestions are split into distinct concepts:
+Suggestions are separated into:
 
 - strongest evidence
 - readiness gaps
@@ -123,8 +144,7 @@ Suggestions are split into distinct concepts:
 - evidence to build next
 
 The service validates LLM output and removes unsupported claims. Deterministic
-fallbacks produce conservative guidance when an API key is missing or generation
-fails.
+fallbacks produce conservative guidance when generation fails.
 
 ## Matching
 
@@ -137,8 +157,7 @@ The optional job match flow is requirement-centric:
 5. Optionally use an LLM judge only for ambiguous evidence pairs.
 6. Compute final scores deterministically.
 
-Job matching is a secondary feature and does not drive the default career
-direction workflow.
+Job matching does not drive the default career direction workflow.
 
 ## Language Support
 
@@ -155,11 +174,11 @@ the source resume language when appropriate.
 
 ## Future Architecture
 
-The next major architecture step is durable state:
+The next architecture milestones are:
 
-- persistent analysis jobs
-- Redis or another worker queue
-- persisted resumes, profiles, facts, jobs, matches, suggestions, and versions
-- authenticated ownership boundaries
-- object storage for uploaded files
+- real authentication and authorization
+- production PostgreSQL-only persistence
+- durable analysis job state
+- worker queue for long AI tasks
+- privacy controls for deletion/export
 - observability, cost tracking, and deployment hardening
