@@ -62,6 +62,39 @@ def record_belongs_to_user(
     return user_email == settings.workspace_default_user_email.casefold()
 
 
+def build_initial_suggestion_reviews(
+    response: AnalysisJobResponse,
+) -> list[StoredSuggestionReview]:
+    if not response.suggestions:
+        return []
+    now = utc_now()
+    sections = [
+        ("resume_ready_improvements", response.suggestions.resume_ready_improvements),
+        ("positioning_advice", response.suggestions.positioning_advice),
+        ("evidence_gaps", response.suggestions.evidence_gaps),
+        ("recommended_next_actions", response.suggestions.recommended_next_actions),
+    ]
+    reviews: list[StoredSuggestionReview] = []
+    for section, items in sections:
+        for index, item in enumerate(items):
+            original_text = (
+                getattr(item, "suggested_text", None)
+                or getattr(item, "advice", None)
+                or getattr(item, "gap", None)
+                or getattr(item, "action", None)
+            )
+            reviews.append(
+                StoredSuggestionReview(
+                    review_id=f"{section}:{index}",
+                    section=section,
+                    item_index=index,
+                    original_text=original_text,
+                    updated_at=now,
+                )
+            )
+    return reviews
+
+
 class JsonWorkspaceStore:
     def __init__(self, path: Path | None = None) -> None:
         store_path = path or settings.workspace_fallback_store_path
@@ -131,10 +164,10 @@ class JsonWorkspaceStore:
             reviews = (
                 existing.get("suggestion_reviews", [])
                 if existing
-                else self._initial_suggestion_reviews(response)
+                else build_initial_suggestion_reviews(response)
             )
             if not reviews and response.suggestions:
-                reviews = self._initial_suggestion_reviews(response)
+                reviews = build_initial_suggestion_reviews(response)
             record = StoredAnalysis(
                 analysis_id=response.job_id,
                 user_email=user_email,
@@ -258,39 +291,6 @@ class JsonWorkspaceStore:
             json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-
-    def _initial_suggestion_reviews(
-        self,
-        response: AnalysisJobResponse,
-    ) -> list[StoredSuggestionReview]:
-        if not response.suggestions:
-            return []
-        now = utc_now()
-        sections = [
-            ("resume_ready_improvements", response.suggestions.resume_ready_improvements),
-            ("positioning_advice", response.suggestions.positioning_advice),
-            ("evidence_gaps", response.suggestions.evidence_gaps),
-            ("recommended_next_actions", response.suggestions.recommended_next_actions),
-        ]
-        reviews: list[StoredSuggestionReview] = []
-        for section, items in sections:
-            for index, item in enumerate(items):
-                original_text = (
-                    getattr(item, "suggested_text", None)
-                    or getattr(item, "advice", None)
-                    or getattr(item, "gap", None)
-                    or getattr(item, "action", None)
-                )
-                reviews.append(
-                    StoredSuggestionReview(
-                        review_id=f"{section}:{index}",
-                        section=section,
-                        item_index=index,
-                        original_text=original_text,
-                        updated_at=now,
-                    )
-                )
-        return reviews
 
     def _review_by_id(
         self,
@@ -596,7 +596,7 @@ class DatabaseWorkspaceStore:
         response: AnalysisJobResponse,
     ) -> None:
         await session.execute(delete(Suggestion).where(Suggestion.analysis_id == analysis_id))
-        for review in self._initial_suggestion_reviews(response):
+        for review in build_initial_suggestion_reviews(response):
             item_json = {
                 "review_id": review.review_id,
                 "section": review.section,
@@ -671,39 +671,6 @@ class DatabaseWorkspaceStore:
             select(Suggestion).where(Suggestion.analysis_id == analysis_id)
         )
         return len(result.scalars().all())
-
-    def _initial_suggestion_reviews(
-        self,
-        response: AnalysisJobResponse,
-    ) -> list[StoredSuggestionReview]:
-        if not response.suggestions:
-            return []
-        now = utc_now()
-        sections = [
-            ("resume_ready_improvements", response.suggestions.resume_ready_improvements),
-            ("positioning_advice", response.suggestions.positioning_advice),
-            ("evidence_gaps", response.suggestions.evidence_gaps),
-            ("recommended_next_actions", response.suggestions.recommended_next_actions),
-        ]
-        reviews: list[StoredSuggestionReview] = []
-        for section, items in sections:
-            for index, item in enumerate(items):
-                original_text = (
-                    getattr(item, "suggested_text", None)
-                    or getattr(item, "advice", None)
-                    or getattr(item, "gap", None)
-                    or getattr(item, "action", None)
-                )
-                reviews.append(
-                    StoredSuggestionReview(
-                        review_id=f"{section}:{index}",
-                        section=section,
-                        item_index=index,
-                        original_text=original_text,
-                        updated_at=now,
-                    )
-                )
-        return reviews
 
     def _stored_resume(self, resume: Resume) -> StoredResume:
         file_type = "docx" if resume.filename.lower().endswith(".docx") else "pdf"
